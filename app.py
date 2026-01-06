@@ -3,6 +3,12 @@
 PROFESSIONAL FUND ANALYTICS PLATFORM
 Black & Gold Theme - Bloomberg Style
 Built with Streamlit + Plotly
+
+REFACTORED VERSION:
+- Unified components in components.py
+- Data management in data_storage.py  
+- Reduced redundancy across tabs
+- Optimized with caching and chart downsampling
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
@@ -19,10 +25,52 @@ from scipy.optimize import minimize_scalar
 import io
 import warnings
 import json
-from wasserstein_dro_optimizer import WassersteinDROOptimizer, WassersteinDROConfig, OptimizationResult
+import os
+import hashlib
 import joblib
 
-# Supabase integration (optional - install with: pip install supabase)
+# Import unified components
+from components import (
+    PortfolioMetrics,
+    create_cumulative_returns_chart,
+    create_rolling_sharpe_chart,
+    create_rolling_volatility_chart,
+    create_underwater_chart,
+    create_omega_gauge,
+    create_rachev_gauge,
+    create_var_cvar_chart,
+    create_portfolio_pie_chart,
+    style_returns_table,
+    style_book_analysis_table,
+    downsample_for_chart
+)
+
+from data_storage import (
+    load_fund_metrics as load_fund_data_from_storage,
+    load_fund_details as load_fund_details_from_storage,
+    load_benchmarks as load_benchmarks_from_storage,
+    render_data_management_panel,
+    CACHE_KEYS
+)
+
+# GitHub Releases integration
+from github_releases import (
+    is_github_configured,
+    load_fund_metrics_from_github,
+    load_fund_details_from_github,
+    load_benchmarks_from_github,
+    render_github_data_panel,
+    clear_github_cache
+)
+
+# Wasserstein DRO Optimizer
+try:
+    from wasserstein_dro_optimizer import WassersteinDROOptimizer, WassersteinDROConfig, OptimizationResult
+    DRO_AVAILABLE = True
+except ImportError:
+    DRO_AVAILABLE = False
+
+# Supabase integration (optional)
 try:
     from supabase import create_client, Client
     SUPABASE_AVAILABLE = True
@@ -30,13 +78,29 @@ except ImportError:
     SUPABASE_AVAILABLE = False
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CONFIGURATION - FILE PATHS (Optional: Set paths to auto-load files)
+# CONFIGURATION - DATA SOURCES
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Set these paths to auto-load files on startup (leave empty strings to disable)
-DEFAULT_METRICS_PATH = "Sheets/fund_metrics.xlsx"  # e.g., "C:/Data/fund_metrics.xlsx"
-DEFAULT_DETAILS_PATH = "Sheets/funds_info.pkl"
-DEFAULT_BENCHMARKS_PATH = "Sheets/benchmarks_data.xlsx"  # e.g., "C:/Data/benchmarks_data.xlsx"
+# Data source priority: GitHub Releases (cloud) > Local Files > Upload
+
+# OPTION 1: GitHub Releases (recommended for Streamlit Cloud)
+# Configure in .streamlit/secrets.toml - see secrets.toml.example
+
+# OPTION 2: Local file paths (for local development)
+def get_data_path(base_name, extensions=['pkl', 'xlsx']):
+    """Find data file in common locations."""
+    locations = ['data/', 'Sheets/', '']
+    for loc in locations:
+        for ext in extensions:
+            path = f"{loc}{base_name}.{ext}"
+            if os.path.exists(path):
+                return path
+    return None
+
+# Try to find files automatically, fallback to defaults
+DEFAULT_METRICS_PATH = get_data_path('fund_metrics') or "Sheets/fund_metrics.xlsx"
+DEFAULT_DETAILS_PATH = get_data_path('funds_info', ['pkl']) or "Sheets/funds_info.pkl"
+DEFAULT_BENCHMARKS_PATH = get_data_path('benchmarks_data') or "Sheets/benchmarks_data.xlsx"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SUPABASE CONFIGURATION
@@ -651,13 +715,20 @@ def estimate_rolling_copula_for_chart(fund_returns, benchmark_returns, window=25
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data
+@st.cache_data(ttl=3600, show_spinner="Loading fund metrics...")
 def load_fund_data(file_path=None, uploaded_file=None):
-    """Load fund metrics from file."""
+    """Load fund metrics from file. Supports xlsx and pkl formats."""
     try:
         if uploaded_file is not None:
-            df = pd.read_excel(uploaded_file)
+            if hasattr(uploaded_file, 'name') and uploaded_file.name.endswith('.pkl'):
+                df = joblib.load(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
         elif file_path is not None:
-            df = pd.read_excel(file_path)
+            if file_path.endswith('.pkl'):
+                df = joblib.load(file_path)
+            else:
+                df = pd.read_excel(file_path)
         else:
             return None
         
@@ -727,16 +798,26 @@ def load_fund_details(file_path=None, uploaded_file=None):
         return None
 
 
-@st.cache_data
+@st.cache_data(ttl=3600, show_spinner="Loading benchmarks...")
 def load_benchmarks(file_path=None, uploaded_file=None):
-    """Load benchmark returns data."""
+    """Load benchmark returns data. Supports xlsx and pkl formats."""
     try:
         if uploaded_file is not None:
-            df = pd.read_excel(uploaded_file)
+            if hasattr(uploaded_file, 'name') and uploaded_file.name.endswith('.pkl'):
+                df = joblib.load(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
         elif file_path is not None:
-            df = pd.read_excel(file_path)
+            if file_path.endswith('.pkl'):
+                df = joblib.load(file_path)
+            else:
+                df = pd.read_excel(file_path)
         else:
             return None
+        
+        # If already has DatetimeIndex, return as is
+        if isinstance(df.index, pd.DatetimeIndex):
+            return df
         
         # Parse dates
         date_col = df.columns[0]
@@ -2793,84 +2874,112 @@ def main():
     # Add logout button to sidebar
     logout_button()
 
-    # Sidebar - Data Upload
+    # Sidebar - Data Source Selection
     with st.sidebar:
         st.image("https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeidg7jhop75zsn62wkvgl5apwkf3zhoh6kobuyznaxvmfnt22ikw7y", 
                 use_container_width=True)
         st.markdown("---")
         
-        st.header("📁 Data Upload")
+        st.header("📁 Data Source")
         
-        # Check if default paths are set
-        use_default_paths = st.checkbox(
-            "Use Pre-configured File Paths",
-            value=bool(DEFAULT_METRICS_PATH or DEFAULT_DETAILS_PATH or DEFAULT_BENCHMARKS_PATH),
-            help="Load files from paths configured in the code"
+        # Determine default data source based on what's configured
+        default_source_index = 0  # GitHub Releases
+        if not is_github_configured():
+            if os.path.exists(DEFAULT_METRICS_PATH) or os.path.exists(DEFAULT_DETAILS_PATH):
+                default_source_index = 1  # Local Files
+            else:
+                default_source_index = 2  # Upload
+        
+        # Data source selection
+        data_source = st.radio(
+            "Load data from:",
+            options=['📦 GitHub Releases', '📂 Local Files', '📤 Upload'],
+            index=default_source_index,
+            help="GitHub: Cloud storage via releases | Local: Load from disk | Upload: Upload files manually"
         )
         
-        if use_default_paths and (DEFAULT_METRICS_PATH or DEFAULT_DETAILS_PATH or DEFAULT_BENCHMARKS_PATH):
-            st.info("📂 Loading from pre-configured paths...")
-            uploaded_metrics = None
-            uploaded_details = None
-            uploaded_benchmarks = None
+        uploaded_metrics = None
+        uploaded_details = None
+        uploaded_benchmarks = None
+        fund_metrics = None
+        fund_details = None
+        benchmarks = None
+        
+        if data_source == '📦 GitHub Releases':
+            # Use the GitHub panel which handles everything
+            fund_metrics, fund_details, benchmarks = render_github_data_panel()
             
-            # Show which files are configured
-            if DEFAULT_METRICS_PATH:
-                st.success(f"✓ Metrics: {DEFAULT_METRICS_PATH.split('/')[-1]}")
-            if DEFAULT_DETAILS_PATH:
-                st.success(f"✓ Details: {DEFAULT_DETAILS_PATH.split('/')[-1]}")
-            if DEFAULT_BENCHMARKS_PATH:
-                st.success(f"✓ Benchmarks: {DEFAULT_BENCHMARKS_PATH.split('/')[-1]}")
-        else:
+            # Process fund_metrics if loaded
+            if fund_metrics is not None:
+                fund_metrics = fund_metrics.replace('n/a', np.nan)
+                if 'CNPJ' in fund_metrics.columns:
+                    fund_metrics['CNPJ_STANDARD'] = fund_metrics['CNPJ'].apply(standardize_cnpj)
+            
+            # Process fund_details if loaded
+            if fund_details is not None and 'CNPJ_FUNDO' in fund_details.columns:
+                fund_details['CNPJ_STANDARD'] = fund_details['CNPJ_FUNDO'].apply(standardize_cnpj)
+        
+        elif data_source == '📂 Local Files':
+            st.info("📂 Using local files...")
+            files_found = []
+            if os.path.exists(DEFAULT_METRICS_PATH):
+                files_found.append(f"✓ {DEFAULT_METRICS_PATH.split('/')[-1]}")
+            if os.path.exists(DEFAULT_DETAILS_PATH):
+                files_found.append(f"✓ {DEFAULT_DETAILS_PATH.split('/')[-1]}")
+            if os.path.exists(DEFAULT_BENCHMARKS_PATH):
+                files_found.append(f"✓ {DEFAULT_BENCHMARKS_PATH.split('/')[-1]}")
+            
+            if files_found:
+                for f in files_found:
+                    st.success(f)
+            else:
+                st.warning("No local files found")
+        
+        else:  # Upload
             uploaded_metrics = st.file_uploader(
-                "Upload Fund Metrics", 
-                type=['xlsx', 'csv'],
-                help="Upload metrics with all exposures included"
+                "Fund Metrics (xlsx/pkl)", 
+                type=['xlsx', 'pkl'],
+                help="Upload fund_metrics file"
             )
-            
             uploaded_details = st.file_uploader(
-                "Upload Fund Details (Joblib/Pickle)",
-                type=['pkl', 'joblib', 'pickle'],
-                help="Upload pre-saved DataFrame in joblib format"
+                "Fund Details (pkl)",
+                type=['pkl'],
+                help="Upload funds_info.pkl"
             )
-            
             uploaded_benchmarks = st.file_uploader(
-                "Upload Benchmarks",
-                type=['xlsx', 'csv'],
-                help="Upload benchmark returns data"
+                "Benchmarks (xlsx/pkl)",
+                type=['xlsx', 'pkl'],
+                help="Upload benchmarks_data file"
             )
         
         st.markdown("---")
-        
-        if use_default_paths:
-            if DEFAULT_METRICS_PATH and DEFAULT_BENCHMARKS_PATH:
-                st.success("✅ Using pre-configured files!")
-                if not DEFAULT_DETAILS_PATH:
-                    st.info("ℹ️ Configure Details path (.pkl) for time series")
-            else:
-                st.warning("⚠️ Configure file paths in code")
-        else:
-            required_files = [uploaded_metrics, uploaded_benchmarks]
-            if all(required_files):
-                st.success("✅ Essential data loaded!")
-                if not uploaded_details:
-                    st.info("ℹ️ Upload Fund Details (.pkl) for time series charts")
-            else:
-                st.warning("⚠️ Upload Metrics & Benchmarks to begin")
     
-    # Load data (from paths or uploaded files)
-    if use_default_paths:
-        fund_metrics = load_fund_data(file_path=DEFAULT_METRICS_PATH if DEFAULT_METRICS_PATH else None)
-        fund_details = load_fund_details(file_path=DEFAULT_DETAILS_PATH if DEFAULT_DETAILS_PATH else None)
-        benchmarks = load_benchmarks(file_path=DEFAULT_BENCHMARKS_PATH if DEFAULT_BENCHMARKS_PATH else None)
-    else:
+    # Load data for non-GitHub sources (GitHub already loaded above)
+    if data_source == '📂 Local Files':
+        # Load from local paths
+        fund_metrics = load_fund_data(file_path=DEFAULT_METRICS_PATH if os.path.exists(DEFAULT_METRICS_PATH) else None)
+        fund_details = load_fund_details(file_path=DEFAULT_DETAILS_PATH if os.path.exists(DEFAULT_DETAILS_PATH) else None)
+        benchmarks = load_benchmarks(file_path=DEFAULT_BENCHMARKS_PATH if os.path.exists(DEFAULT_BENCHMARKS_PATH) else None)
+    
+    elif data_source == '📤 Upload':
+        # Load from uploaded files
         fund_metrics = load_fund_data(uploaded_file=uploaded_metrics)
         fund_details = load_fund_details(uploaded_file=uploaded_details)
         benchmarks = load_benchmarks(uploaded_file=uploaded_benchmarks)
     
     if fund_metrics is None:
         st.title("🏆 PROFESSIONAL FUND ANALYTICS PLATFORM")
-        st.markdown("### Upload data files in the sidebar to begin analysis")
+        st.markdown("### Configure data source in the sidebar to begin")
+        
+        if data_source == '📦 GitHub Releases' and not is_github_configured():
+            st.info("""
+            **To use GitHub Releases:**
+            1. Create a Personal Access Token at [GitHub Settings](https://github.com/settings/tokens)
+            2. Create a Release in your repository with tag `data`
+            3. Add credentials to Streamlit secrets
+            
+            See the sidebar for detailed setup instructions.
+            """)
         return
     
     # Main tabs
