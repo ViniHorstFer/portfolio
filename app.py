@@ -743,7 +743,7 @@ def load_fund_data(file_path=None, uploaded_file=None):
         numeric_cols = df.select_dtypes(include=['object']).columns
         for col in numeric_cols:
             if col not in ['FUNDO DE INVESTIMENTO', 'CNPJ', 'CNPJ_STANDARD', 'GESTOR', 
-                          'CATEGORIA BTG', 'SUBCATEGORIA BTG', 'STATUS', 'LAST_UPDATE', 'TRIBUTAÇÃO', 'LIQUIDEZ']:
+                          'CATEGORIA BTG', 'SUBCATEGORIA BTG', 'STATUS', 'LAST_UPDATE', 'TRIBUTAÇÃO', 'LIQUIDEZ', 'SUITABILITY']:
                 df[col] = pd.to_numeric(df[col], errors='ignore')
         
         return df
@@ -3087,18 +3087,23 @@ def main():
                 else:
                     st.markdown("<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>N/A</p>", unsafe_allow_html=True)
             
-            # Additional row for Tributação and Liquidez
-            info_col5, info_col6, info_col7, info_col8 = st.columns(4)
+            # Additional row for Tributação, Liquidez and Suitability
+            info_col5, info_col6, info_col7 = st.columns(3)
             
             with info_col5:
-                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>TAXATION (TRIBUTAÇÃO)</p>", unsafe_allow_html=True)
+                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>TAXATION</p>", unsafe_allow_html=True)
                 tributacao = fund_info.get('TRIBUTAÇÃO', 'N/A')
                 st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{tributacao}</p>", unsafe_allow_html=True)
             
             with info_col6:
-                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>LIQUIDITY (LIQUIDEZ)</p>", unsafe_allow_html=True)
+                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>LIQUIDITY</p>", unsafe_allow_html=True)
                 liquidez = fund_info.get('LIQUIDEZ', 'N/A')
                 st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{liquidez}</p>", unsafe_allow_html=True)
+
+            with info_col7:
+                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>SUITABILITY</p>", unsafe_allow_html=True)
+                suitability = fund_info.get('SUITABILITY', 'N/A')
+                st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{suitability}</p>", unsafe_allow_html=True)
             
             st.markdown("---")
             
@@ -4018,7 +4023,7 @@ def main():
         
         # Define column categories for easier selection
         basic_info_cols = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR', 'CATEGORIA BTG', 
-                          'SUBCATEGORIA BTG', 'STATUS', 'VL_PATRIM_LIQ', 'NR_COTST', 'TRIBUTAÇÃO', 'LIQUIDEZ']
+                          'SUBCATEGORIA BTG', 'STATUS', 'VL_PATRIM_LIQ', 'NR_COTST', 'TRIBUTAÇÃO', 'LIQUIDEZ', 'SUITABILITY']
         
         return_cols = [col for col in fund_metrics.columns if 'RETURN' in col] + \
                       [col for col in fund_metrics.columns if 'EXCESS' in col]
@@ -7130,5 +7135,3 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
 
 if __name__ == "__main__":
     main()
-
-
