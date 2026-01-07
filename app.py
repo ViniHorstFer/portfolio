@@ -3088,7 +3088,7 @@ def main():
                     st.markdown("<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>N/A</p>", unsafe_allow_html=True)
             
             # Additional row for Tributação, Liquidez and Suitability
-            info_col5, info_col6, info_col7 = st.columns(3)
+            info_col5, info_col6, info_col7, info_col8 = st.columns(4)
             
             with info_col5:
                 st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>TAXATION</p>", unsafe_allow_html=True)
@@ -7135,3 +7135,4 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
 
 if __name__ == "__main__":
     main()
+
