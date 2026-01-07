@@ -2070,7 +2070,7 @@ class PortfolioMetrics:
         expected_gain = np.mean(upper_tail)
         if expected_gain == 0:
             return np.inf if expected_loss > 0 else 1.0
-        return expected_gain / expected_loss
+        return expected_gain / np.abs(expected_loss)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -7130,4 +7130,5 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
 
 if __name__ == "__main__":
     main()
+
 
