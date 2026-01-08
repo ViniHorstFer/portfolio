@@ -432,7 +432,7 @@ BLACK_GOLD_STYLE = """
     
     /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
-        background-color: #1a1a1a;
+        background-color: #000000;
         border-bottom: 2px solid #D4AF37;
     }
     
@@ -7143,5 +7143,6 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
 
 if __name__ == "__main__":
     main()
+
 
 
