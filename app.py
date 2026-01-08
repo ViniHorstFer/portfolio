@@ -250,7 +250,7 @@ def login_page():
             max-width: 200px;
             margin: 30px auto; /* reduced top margin */
             padding: 40px;
-            background-image: url('https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeidg7jhop75zsn62wkvgl5apwkf3zhoh6kobuyznaxvmfnt22ikw7y');
+            background-image: url('https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeigayrnnsuwglzkbhikm32ksvucxecuorcj4k36l4de7na6wcdpjsa');
             background-size: contain;
             background-position: center;
             background-repeat: no-repeat;
@@ -267,6 +267,14 @@ def login_page():
             font-weight: 700;
             margin-bottom: 10px;
             letter-spacing: 2px;
+        }
+
+        .stApp {
+            background-image: url('https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeia6qj2jol4spdjraxdlohre7yg7wofe33awh2udn6harmg3an4mdq');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -2876,7 +2884,7 @@ def main():
 
     # Sidebar - Data Source Selection
     with st.sidebar:
-        st.image("https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeidg7jhop75zsn62wkvgl5apwkf3zhoh6kobuyznaxvmfnt22ikw7y", 
+        st.image("https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeigayrnnsuwglzkbhikm32ksvucxecuorcj4k36l4de7na6wcdpjsa", 
                 use_container_width=True)
         st.markdown("---")
         
@@ -7135,4 +7143,5 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
 
 if __name__ == "__main__":
     main()
+
 
