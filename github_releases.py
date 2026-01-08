@@ -727,8 +727,12 @@ def format_datetime(dt_str: str) -> str:
 # STREAMLIT UI COMPONENT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def render_github_data_panel():
-    """Render the GitHub Releases data management panel for the sidebar."""
+def render_github_data_panel(show_upload: bool = True):
+    """Render the GitHub Releases data management panel for the sidebar.
+    
+    Args:
+        show_upload: If False, hides the upload section (for read-only users)
+    """
     
     st.markdown("### 📦 GitHub Releases Storage")
     
@@ -782,53 +786,54 @@ def render_github_data_panel():
         else:
             st.info("No files uploaded yet")
     
-    # Upload section
-    with st.expander("📤 Upload New Data", expanded=False):
-        st.caption("Upload new versions of data files")
-        st.caption("💡 *pkl files are auto-compressed to .zip for GitHub compatibility*")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            metrics_file = st.file_uploader(
-                "Fund Metrics",
+    # Upload section - only show if user has permission
+    if show_upload:
+        with st.expander("📤 Upload New Data", expanded=False):
+            st.caption("Upload new versions of data files")
+            st.caption("💡 *pkl files are auto-compressed to .zip for GitHub compatibility*")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                metrics_file = st.file_uploader(
+                    "Fund Metrics",
+                    type=['xlsx', 'pkl'],
+                    key='gh_upload_metrics',
+                    help="fund_metrics.xlsx or .pkl (pkl will be compressed)"
+                )
+                
+                if metrics_file and st.button("Upload Metrics", key='btn_gh_upload_metrics'):
+                    with st.spinner("Uploading..."):
+                        if upload_fund_metrics(metrics_file):
+                            st.success("✅ Uploaded!")
+                            st.rerun()
+            
+            with col2:
+                details_file = st.file_uploader(
+                    "Fund Details",
+                    type=['pkl'],
+                    key='gh_upload_details',
+                    help="funds_info.pkl (will be compressed to .zip)"
+                )
+                
+                if details_file and st.button("Upload Details", key='btn_gh_upload_details'):
+                    with st.spinner("Uploading (compressing pkl → zip)..."):
+                        if upload_fund_details(details_file):
+                            st.success("✅ Uploaded!")
+                            st.rerun()
+            
+            benchmarks_file = st.file_uploader(
+                "Benchmarks",
                 type=['xlsx', 'pkl'],
-                key='gh_upload_metrics',
-                help="fund_metrics.xlsx or .pkl (pkl will be compressed)"
+                key='gh_upload_benchmarks',
+                help="benchmarks_data.xlsx or .pkl"
             )
             
-            if metrics_file and st.button("Upload Metrics", key='btn_gh_upload_metrics'):
+            if benchmarks_file and st.button("Upload Benchmarks", key='btn_gh_upload_benchmarks'):
                 with st.spinner("Uploading..."):
-                    if upload_fund_metrics(metrics_file):
+                    if upload_benchmarks(benchmarks_file):
                         st.success("✅ Uploaded!")
                         st.rerun()
-        
-        with col2:
-            details_file = st.file_uploader(
-                "Fund Details",
-                type=['pkl'],
-                key='gh_upload_details',
-                help="funds_info.pkl (will be compressed to .zip)"
-            )
-            
-            if details_file and st.button("Upload Details", key='btn_gh_upload_details'):
-                with st.spinner("Uploading (compressing pkl → zip)..."):
-                    if upload_fund_details(details_file):
-                        st.success("✅ Uploaded!")
-                        st.rerun()
-        
-        benchmarks_file = st.file_uploader(
-            "Benchmarks",
-            type=['xlsx', 'pkl'],
-            key='gh_upload_benchmarks',
-            help="benchmarks_data.xlsx or .pkl"
-        )
-        
-        if benchmarks_file and st.button("Upload Benchmarks", key='btn_gh_upload_benchmarks'):
-            with st.spinner("Uploading..."):
-                if upload_benchmarks(benchmarks_file):
-                    st.success("✅ Uploaded!")
-                    st.rerun()
     
     # Refresh button
     if st.button("🔄 Refresh Data", use_container_width=True, help="Clear cache and reload from GitHub"):
