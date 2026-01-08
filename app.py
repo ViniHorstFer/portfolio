@@ -13,6 +13,7 @@ REFACTORED VERSION:
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -221,19 +222,134 @@ def delete_portfolio_from_supabase(portfolio_name: str, user_id: str = "default"
         return False
 
 
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUPABASE - RISK MONITOR FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def save_risk_monitor_to_supabase(monitor_name: str, funds_list: list, user_id: str = "default") -> bool:
+    """Save risk monitor fund list to Supabase database."""
+    client = get_supabase_client()
+    if not client:
+        return False
+    
+    try:
+        data = {
+            "user_id": user_id,
+            "monitor_name": monitor_name,
+            "funds_data": json.dumps(funds_list),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # Upsert (insert or update if exists)
+        result = client.table("risk_monitor_funds").upsert(
+            data, 
+            on_conflict="user_id,monitor_name"
+        ).execute()
+        
+        return True
+    except Exception as e:
+        st.error(f"Failed to save risk monitor: {e}")
+        return False
+
+
+def load_risk_monitor_from_supabase(monitor_name: str, user_id: str = "default") -> list:
+    """Load risk monitor fund list from Supabase database."""
+    client = get_supabase_client()
+    if not client:
+        return None
+    
+    try:
+        result = client.table("risk_monitor_funds").select("*").eq(
+            "user_id", user_id
+        ).eq(
+            "monitor_name", monitor_name
+        ).execute()
+        
+        if result.data and len(result.data) > 0:
+            return json.loads(result.data[0]["funds_data"])
+        return None
+    except Exception as e:
+        st.error(f"Failed to load risk monitor: {e}")
+        return None
+
+
+def list_risk_monitors_from_supabase(user_id: str = "default") -> list:
+    """List all saved risk monitors for a user from Supabase."""
+    client = get_supabase_client()
+    if not client:
+        return []
+    
+    try:
+        result = client.table("risk_monitor_funds").select(
+            "monitor_name, updated_at"
+        ).eq(
+            "user_id", user_id
+        ).order(
+            "updated_at", desc=True
+        ).execute()
+        
+        return result.data if result.data else []
+    except Exception as e:
+        st.error(f"Failed to list risk monitors: {e}")
+        return []
+
+
+def delete_risk_monitor_from_supabase(monitor_name: str, user_id: str = "default") -> bool:
+    """Delete risk monitor from Supabase database."""
+    client = get_supabase_client()
+    if not client:
+        return False
+    
+    try:
+        client.table("risk_monitor_funds").delete().eq(
+            "user_id", user_id
+        ).eq(
+            "monitor_name", monitor_name
+        ).execute()
+        return True
+    except Exception as e:
+        st.error(f"Failed to delete risk monitor: {e}")
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # AUTHENTICATION SYSTEM
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═══════════════════════════════════════════════════════════════════════════════
 
 import hashlib
 
 # Predefined users and passwords (stored as SHA-256 hashes for security)
+# User roles: admin, analyst, manager have full access
+#             banker has limited tabs (Fund Database, Detailed Analysis, Recommended Portfolio)
+#             trader has all tabs but no upload access
 USERS = {
     "admin": hashlib.sha256("admin123".encode()).hexdigest(),
     "analyst": hashlib.sha256("analyst456".encode()).hexdigest(),
     "manager": hashlib.sha256("manager789".encode()).hexdigest(),
-    # Add more users here in format: "username": hashlib.sha256("password".encode()).hexdigest()
+    "banker": hashlib.sha256("banker753".encode()).hexdigest(),
+    "trader": hashlib.sha256("trader2026".encode()).hexdigest(),
 }
+
+# User role permissions
+USER_ROLES = {
+    "admin": {"can_upload": True, "tabs": "all"},
+    "analyst": {"can_upload": True, "tabs": "all"},
+    "manager": {"can_upload": True, "tabs": "all"},
+    "banker": {"can_upload": False, "tabs": ["📋 FUND DATABASE", "📊 DETAILED ANALYSIS", "💼 RECOMMENDED PORTFOLIO"]},
+    "trader": {"can_upload": False, "tabs": "all"},
+}
+
+def get_user_permissions(username: str) -> dict:
+    """Get permissions for a user."""
+    return USER_ROLES.get(username, {"can_upload": False, "tabs": "all"})
+
+def can_user_upload(username: str) -> bool:
+    """Check if user has upload permissions."""
+    return USER_ROLES.get(username, {}).get("can_upload", False)
+
+def get_user_tabs(username: str) -> list:
+    """Get list of tabs user can access. Returns 'all' or list of tab names."""
+    return USER_ROLES.get(username, {}).get("tabs", "all")
 
 def check_password(username, password):
     """Verify username and password."""
@@ -250,7 +366,7 @@ def login_page():
             max-width: 200px;
             margin: 30px auto; /* reduced top margin */
             padding: 40px;
-            background-image: url('https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeigayrnnsuwglzkbhikm32ksvucxecuorcj4k36l4de7na6wcdpjsa');
+            background-image: url('https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeidg7jhop75zsn62wkvgl5apwkf3zhoh6kobuyznaxvmfnt22ikw7y');
             background-size: contain;
             background-position: center;
             background-repeat: no-repeat;
@@ -267,14 +383,6 @@ def login_page():
             font-weight: 700;
             margin-bottom: 10px;
             letter-spacing: 2px;
-        }
-
-        .stApp {
-            background-image: url('https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeia6qj2jol4spdjraxdlohre7yg7wofe33awh2udn6harmg3an4mdq');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -432,7 +540,7 @@ BLACK_GOLD_STYLE = """
     
     /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
-        background-color: #000000;
+        background-color: #1a1a1a;
         border-bottom: 2px solid #D4AF37;
     }
     
@@ -751,7 +859,7 @@ def load_fund_data(file_path=None, uploaded_file=None):
         numeric_cols = df.select_dtypes(include=['object']).columns
         for col in numeric_cols:
             if col not in ['FUNDO DE INVESTIMENTO', 'CNPJ', 'CNPJ_STANDARD', 'GESTOR', 
-                          'CATEGORIA BTG', 'SUBCATEGORIA BTG', 'STATUS', 'LAST_UPDATE', 'TRIBUTAÇÃO', 'LIQUIDEZ', 'SUITABILITY']:
+                          'CATEGORIA BTG', 'SUBCATEGORIA BTG', 'STATUS', 'LAST_UPDATE', 'TRIBUTAÇÃO', 'LIQUIDEZ']:
                 df[col] = pd.to_numeric(df[col], errors='ignore')
         
         return df
@@ -2078,7 +2186,7 @@ class PortfolioMetrics:
         expected_gain = np.mean(upper_tail)
         if expected_gain == 0:
             return np.inf if expected_loss > 0 else 1.0
-        return expected_gain / np.abs(expected_loss)
+        return expected_loss / expected_gain
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2884,11 +2992,15 @@ def main():
 
     # Sidebar - Data Source Selection
     with st.sidebar:
-        st.image("https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeigayrnnsuwglzkbhikm32ksvucxecuorcj4k36l4de7na6wcdpjsa", 
+        st.image("https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeidg7jhop75zsn62wkvgl5apwkf3zhoh6kobuyznaxvmfnt22ikw7y", 
                 use_container_width=True)
         st.markdown("---")
         
         st.header("📁 Data Source")
+        
+        # Check if user can upload
+        current_username = st.session_state.get('username', 'admin')
+        user_can_upload = can_user_upload(current_username)
         
         # Determine default data source based on what's configured
         default_source_index = 0  # GitHub Releases
@@ -2896,14 +3008,22 @@ def main():
             if os.path.exists(DEFAULT_METRICS_PATH) or os.path.exists(DEFAULT_DETAILS_PATH):
                 default_source_index = 1  # Local Files
             else:
-                default_source_index = 2  # Upload
+                default_source_index = 2 if user_can_upload else 0  # Upload only if allowed
+        
+        # Data source options depend on user permissions
+        if user_can_upload:
+            data_source_options = ['📦 GitHub Releases', '📂 Local Files', '📤 Upload']
+        else:
+            data_source_options = ['📦 GitHub Releases', '📂 Local Files']
+            if default_source_index == 2:
+                default_source_index = 0  # Fall back to GitHub if upload was default
         
         # Data source selection
         data_source = st.radio(
             "Load data from:",
-            options=['📦 GitHub Releases', '📂 Local Files', '📤 Upload'],
-            index=default_source_index,
-            help="GitHub: Cloud storage via releases | Local: Load from disk | Upload: Upload files manually"
+            options=data_source_options,
+            index=min(default_source_index, len(data_source_options) - 1),
+            help="GitHub: Cloud storage via releases | Local: Load from disk" + (" | Upload: Upload files manually" if user_can_upload else "")
         )
         
         uploaded_metrics = None
@@ -2914,8 +3034,8 @@ def main():
         benchmarks = None
         
         if data_source == '📦 GitHub Releases':
-            # Use the GitHub panel which handles everything
-            fund_metrics, fund_details, benchmarks = render_github_data_panel()
+            # Use the GitHub panel which handles everything (hide upload for non-upload users)
+            fund_metrics, fund_details, benchmarks = render_github_data_panel(show_upload=user_can_upload)
             
             # Process fund_metrics if loaded
             if fund_metrics is not None:
@@ -2990,41 +3110,59 @@ def main():
             """)
         return
     
-    # Main tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 FUND DATABASE", "📊 DETAILED ANALYSIS", "🔍 ADVANCED COMPARISON", "🎯 PORTFOLIO CONSTRUCTION", "💼 RECOMMENDED PORTFOLIO"])
+    # Get current user's allowed tabs
+    current_username = st.session_state.get('username', 'admin')
+    user_tabs_config = get_user_tabs(current_username)
+    
+    # Define all available tabs
+    ALL_TABS = ["📋 FUND DATABASE", "📊 DETAILED ANALYSIS", "🔍 ADVANCED COMPARISON", "🎯 PORTFOLIO CONSTRUCTION", "💼 RECOMMENDED PORTFOLIO", "⚠️ RISK MONITOR"]
+    
+    # Filter tabs based on user role
+    if user_tabs_config == "all":
+        available_tabs = ALL_TABS
+    else:
+        available_tabs = [t for t in ALL_TABS if t in user_tabs_config]
+    
+    # Create tabs dynamically based on user permissions
+    tabs = st.tabs(available_tabs)
+    
+    # Create a mapping from tab name to tab object
+    tab_map = {name: tab for name, tab in zip(available_tabs, tabs)}
     
     # ═══════════════════════════════════════════════════════════════════════════
     # TAB 1: FUND DATABASE
     # ═══════════════════════════════════════════════════════════════════════════
     
-    with tab1:
-        st.title("📋 INVESTMENT FUNDS DATABASE")
-        st.markdown("---")
-        
-        display_cols = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR', 'CATEGORIA BTG', 
-                       'SUBCATEGORIA BTG', 'STATUS', 'LAST_UPDATE', 'VL_PATRIM_LIQ', 
-                       'NR_COTST']
-        
-        fund_list = fund_metrics[display_cols].copy()
-        
-        if 'VL_PATRIM_LIQ' in fund_list.columns:
-            fund_list['VL_PATRIM_LIQ'] = fund_list['VL_PATRIM_LIQ'].apply(
-                lambda x: f"R$ {x:,.2f}" if pd.notna(x) else "N/A"
-            )
-        
-        if 'NR_COTST' in fund_list.columns:
-            fund_list['NR_COTST'] = fund_list['NR_COTST'].apply(
-                lambda x: f"{int(x):,}" if pd.notna(x) else "N/A"
-            )
-        
-        st.dataframe(fund_list, use_container_width=True, height=600)
-        st.info("💡 Navigate to 'DETAILED ANALYSIS' tab to explore individual fund performance")
+    if "📋 FUND DATABASE" in tab_map:
+        with tab_map["📋 FUND DATABASE"]:
+            st.title("📋 INVESTMENT FUNDS DATABASE")
+            st.markdown("---")
+            
+            display_cols = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR', 'CATEGORIA BTG', 
+                           'SUBCATEGORIA BTG', 'STATUS', 'LAST_UPDATE', 'VL_PATRIM_LIQ', 
+                           'NR_COTST']
+            
+            fund_list = fund_metrics[display_cols].copy()
+            
+            if 'VL_PATRIM_LIQ' in fund_list.columns:
+                fund_list['VL_PATRIM_LIQ'] = fund_list['VL_PATRIM_LIQ'].apply(
+                    lambda x: f"R$ {x:,.2f}" if pd.notna(x) else "N/A"
+                )
+            
+            if 'NR_COTST' in fund_list.columns:
+                fund_list['NR_COTST'] = fund_list['NR_COTST'].apply(
+                    lambda x: f"{int(x):,}" if pd.notna(x) else "N/A"
+                )
+            
+            st.dataframe(fund_list, use_container_width=True, height=600)
+            st.info("💡 Navigate to 'DETAILED ANALYSIS' tab to explore individual fund performance")
     
     # ═══════════════════════════════════════════════════════════════════════════
     # TAB 2: DETAILED FUND ANALYSIS
     # ═══════════════════════════════════════════════════════════════════════════
     
-    with tab2:
+    if "📊 DETAILED ANALYSIS" in tab_map:
+      with tab_map["📊 DETAILED ANALYSIS"]:
         st.title("📊 DETAILED FUND ANALYSIS")
         st.markdown("---")
         
@@ -3095,23 +3233,18 @@ def main():
                 else:
                     st.markdown("<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>N/A</p>", unsafe_allow_html=True)
             
-            # Additional row for Tributação, Liquidez and Suitability
+            # Additional row for Tributação and Liquidez
             info_col5, info_col6, info_col7, info_col8 = st.columns(4)
             
             with info_col5:
-                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>TAXATION</p>", unsafe_allow_html=True)
+                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>TAXATION (TRIBUTAÇÃO)</p>", unsafe_allow_html=True)
                 tributacao = fund_info.get('TRIBUTAÇÃO', 'N/A')
                 st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{tributacao}</p>", unsafe_allow_html=True)
             
             with info_col6:
-                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>LIQUIDITY</p>", unsafe_allow_html=True)
+                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>LIQUIDITY (LIQUIDEZ)</p>", unsafe_allow_html=True)
                 liquidez = fund_info.get('LIQUIDEZ', 'N/A')
                 st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{liquidez}</p>", unsafe_allow_html=True)
-
-            with info_col7:
-                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>SUITABILITY</p>", unsafe_allow_html=True)
-                suitability = fund_info.get('SUITABILITY', 'N/A')
-                st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{suitability}</p>", unsafe_allow_html=True)
             
             st.markdown("---")
             
@@ -4014,7 +4147,8 @@ def main():
     # TAB 3: ADVANCED COMPARISON
     # ═══════════════════════════════════════════════════════════════════════════
     
-    with tab3:
+    if "🔍 ADVANCED COMPARISON" in tab_map:
+      with tab_map["🔍 ADVANCED COMPARISON"]:
         st.title("🔍 ADVANCED FUND COMPARISON")
         st.markdown("### Select metrics and filter funds for comparison")
         st.markdown("---")
@@ -4031,7 +4165,7 @@ def main():
         
         # Define column categories for easier selection
         basic_info_cols = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR', 'CATEGORIA BTG', 
-                          'SUBCATEGORIA BTG', 'STATUS', 'VL_PATRIM_LIQ', 'NR_COTST', 'TRIBUTAÇÃO', 'LIQUIDEZ', 'SUITABILITY']
+                          'SUBCATEGORIA BTG', 'STATUS', 'VL_PATRIM_LIQ', 'NR_COTST', 'TRIBUTAÇÃO', 'LIQUIDEZ']
         
         return_cols = [col for col in fund_metrics.columns if 'RETURN' in col] + \
                       [col for col in fund_metrics.columns if 'EXCESS' in col]
@@ -4331,7 +4465,8 @@ def main():
     # TAB 4: PORTFOLIO CONSTRUCTION - WASSERSTEIN DRO
     # ═══════════════════════════════════════════════════════════════════════════════
     
-    with tab4:
+    if "🎯 PORTFOLIO CONSTRUCTION" in tab_map:
+      with tab_map["🎯 PORTFOLIO CONSTRUCTION"]:
         st.title("🎯 PORTFOLIO CONSTRUCTION")
         st.markdown("### Build an optimized portfolio using Wasserstein Distributionally Robust Optimization (DRO)")
         st.markdown("---")
@@ -5734,7 +5869,8 @@ def main():
     # TAB 5: RECOMMENDED PORTFOLIO
     # ═══════════════════════════════════════════════════════════════════════════════
     
-    with tab5:
+    if "💼 RECOMMENDED PORTFOLIO" in tab_map:
+      with tab_map["💼 RECOMMENDED PORTFOLIO"]:
         st.title("💼 RECOMMENDED PORTFOLIO")
         st.markdown("### Create and analyze your recommended investment fund portfolio")
         st.markdown("---")
@@ -7140,9 +7276,1134 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
                     else:
                         st.error("❌ CDI benchmark data not available or no fund returns")
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # TAB 6: RISK MONITOR
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    if "⚠️ RISK MONITOR" in tab_map:
+      with tab_map["⚠️ RISK MONITOR"]:
+        st.title("⚠️ RISK MONITOR")
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # RISK MONITOR HELPER FUNCTIONS
+        # ═══════════════════════════════════════════════════════════════════════
+        
+        @st.cache_data(ttl=3600, show_spinner=False)
+        def calculate_rolling_returns(daily_returns_tuple: tuple, window: int) -> tuple:
+            """
+            Calculate rolling window returns for a given window size.
+            Returns tuple of (rolling_returns_values, rolling_returns_index) for caching.
+            """
+            # Convert tuple back to series
+            daily_returns = pd.Series(daily_returns_tuple[0], index=pd.to_datetime(daily_returns_tuple[1]))
+            
+            if daily_returns is None or len(daily_returns) < window:
+                return None, None
+            
+            # Calculate rolling compound returns
+            rolling_returns = (1 + daily_returns).rolling(window=window).apply(lambda x: x.prod() - 1, raw=True)
+            rolling_returns = rolling_returns.dropna()
+            
+            if len(rolling_returns) < 10:
+                return None, None
+            
+            return tuple(rolling_returns.values), tuple(rolling_returns.index.astype(str))
+        
+        @st.cache_data(ttl=3600, show_spinner=False)
+        def calculate_risk_metrics_cached(returns_tuple: tuple) -> dict:
+            """Calculate VaR and CVaR at 95% and 5% levels. Cached version."""
+            if returns_tuple is None or returns_tuple[0] is None:
+                return None
+            
+            returns = pd.Series(returns_tuple[0], index=pd.to_datetime(returns_tuple[1]))
+            
+            if len(returns) < 10:
+                return None
+            
+            returns = returns.dropna()
+            if len(returns) < 10:
+                return None
+            
+            # Lower tail (losses) - 5th percentile
+            var_95 = np.percentile(returns, 5)  # VaR(95) - 5th percentile of returns
+            cvar_95 = returns[returns <= var_95].mean()  # CVaR(95) - mean of returns below VaR
+            
+            # Upper tail (gains) - 95th percentile
+            var_5 = np.percentile(returns, 95)  # VaR(5) - 95th percentile
+            cvar_5 = returns[returns >= var_5].mean()  # CVaR(5) - mean of returns above 95th percentile
+            
+            # Latest return (from rolling window)
+            latest_return = returns.iloc[-1]
+            
+            # Mean and std for z-score
+            mean_return = returns.mean()
+            std_return = returns.std()
+            z_score = (latest_return - mean_return) / std_return if std_return > 0 else 0
+            
+            return {
+                'var_95': var_95,
+                'cvar_95': cvar_95,
+                'var_5': var_5,
+                'cvar_5': cvar_5,
+                'return': latest_return,
+                'mean': mean_return,
+                'std': std_return,
+                'z_score': z_score
+            }
+        
+        def get_returns_for_frequency(daily_returns: pd.Series, frequency: str) -> tuple:
+            """
+            Get returns for a specific frequency using rolling windows.
+            Daily: as-is
+            Weekly: 5-day rolling window
+            Monthly: 22-day rolling window
+            Returns tuple for caching compatibility.
+            """
+            if daily_returns is None or len(daily_returns) == 0:
+                return None, None
+            
+            if frequency == 'daily':
+                return tuple(daily_returns.values), tuple(daily_returns.index.astype(str))
+            elif frequency == 'weekly':
+                # 5-day rolling window
+                daily_tuple = (tuple(daily_returns.values), tuple(daily_returns.index.astype(str)))
+                return calculate_rolling_returns(daily_tuple, window=5)
+            elif frequency == 'monthly':
+                # 22-day rolling window
+                daily_tuple = (tuple(daily_returns.values), tuple(daily_returns.index.astype(str)))
+                return calculate_rolling_returns(daily_tuple, window=22)
+            
+            return tuple(daily_returns.values), tuple(daily_returns.index.astype(str))
+        
+        @st.cache_data(ttl=3600, show_spinner=False)
+        def calculate_fund_flow_metrics(cnpj_standard: str, fund_details_hash: str) -> dict:
+            """
+            Calculate AUM and shareholder flow metrics for a fund.
+            Cached based on CNPJ and data hash.
+            Uses CNPJ_STANDARD to filter fund_details, similar to create_aum_chart and create_shareholders_chart.
+            """
+            if fund_details is None or cnpj_standard is None:
+                return None
+            
+            try:
+                # Filter fund data using CNPJ_STANDARD - same as create_aum_chart/create_shareholders_chart
+                fund_data = fund_details[fund_details['CNPJ_STANDARD'] == cnpj_standard].copy()
+                
+                if len(fund_data) == 0:
+                    return None
+                
+                # Reset index to work with dates
+                fund_data = fund_data.reset_index()
+                date_col = fund_data.columns[0]  # First column is the date index
+                
+                # Ensure date column is datetime
+                fund_data[date_col] = pd.to_datetime(fund_data[date_col])
+                
+                # Handle duplicate dates - keep row with highest NR_COTST (same logic as chart functions)
+                if 'NR_COTST' in fund_data.columns:
+                    fund_data = fund_data.sort_values('NR_COTST', ascending=False)
+                    fund_data = fund_data.drop_duplicates(subset=[date_col], keep='first')
+                
+                # Sort by date
+                fund_data = fund_data.sort_values(date_col)
+                fund_data = fund_data.set_index(date_col)
+                
+                if len(fund_data) < 2:
+                    return None
+                
+                # Check required columns exist
+                has_aum = 'VL_PATRIM_LIQ' in fund_data.columns
+                has_shareholders = 'NR_COTST' in fund_data.columns
+                has_transfers = 'MOVIMENTACAO' in fund_data.columns
+                
+                if not has_aum and not has_shareholders:
+                    return None
+                
+                # Current values (latest data)
+                current_aum = fund_data['VL_PATRIM_LIQ'].iloc[-1] if has_aum else None
+                current_shareholders = fund_data['NR_COTST'].iloc[-1] if has_shareholders else None
+                
+                # Daily variations
+                daily_transfers = fund_data['MOVIMENTACAO'].iloc[-1] if has_transfers else 0
+                daily_investors_change = (fund_data['NR_COTST'].iloc[-1] - fund_data['NR_COTST'].iloc[-2]) if has_shareholders and len(fund_data) >= 2 else 0
+                
+                # Weekly variations (last 5 reported days)
+                if len(fund_data) >= 5 and has_transfers:
+                    weekly_transfers = fund_data['MOVIMENTACAO'].iloc[-5:].sum()
+                else:
+                    weekly_transfers = daily_transfers
+                
+                if len(fund_data) >= 6 and has_shareholders:
+                    weekly_investors_change = fund_data['NR_COTST'].iloc[-1] - fund_data['NR_COTST'].iloc[-6]
+                else:
+                    weekly_investors_change = daily_investors_change
+                
+                # Monthly variations (last 22 reported days)
+                if len(fund_data) >= 22 and has_transfers:
+                    monthly_transfers = fund_data['MOVIMENTACAO'].iloc[-22:].sum()
+                else:
+                    monthly_transfers = weekly_transfers
+                
+                if len(fund_data) >= 23 and has_shareholders:
+                    monthly_investors_change = fund_data['NR_COTST'].iloc[-1] - fund_data['NR_COTST'].iloc[-23]
+                else:
+                    monthly_investors_change = weekly_investors_change
+                
+                # Calculate percentage variations
+                daily_transfers_pct = (daily_transfers / current_aum * 100) if current_aum and current_aum != 0 else 0
+                weekly_transfers_pct = (weekly_transfers / current_aum * 100) if current_aum and current_aum != 0 else 0
+                monthly_transfers_pct = (monthly_transfers / current_aum * 100) if current_aum and current_aum != 0 else 0
+                
+                daily_investors_pct = (daily_investors_change / current_shareholders * 100) if current_shareholders and current_shareholders != 0 else 0
+                weekly_investors_pct = (weekly_investors_change / current_shareholders * 100) if current_shareholders and current_shareholders != 0 else 0
+                monthly_investors_pct = (monthly_investors_change / current_shareholders * 100) if current_shareholders and current_shareholders != 0 else 0
+                
+                return {
+                    'aum': current_aum,
+                    'shareholders': current_shareholders,
+                    'daily_transfers': daily_transfers,
+                    'daily_transfers_pct': daily_transfers_pct,
+                    'weekly_transfers': weekly_transfers,
+                    'weekly_transfers_pct': weekly_transfers_pct,
+                    'monthly_transfers': monthly_transfers,
+                    'monthly_transfers_pct': monthly_transfers_pct,
+                    'daily_investors': daily_investors_change,
+                    'daily_investors_pct': daily_investors_pct,
+                    'weekly_investors': weekly_investors_change,
+                    'weekly_investors_pct': weekly_investors_pct,
+                    'monthly_investors': monthly_investors_change,
+                    'monthly_investors_pct': monthly_investors_pct,
+                }
+            except Exception as e:
+                return None
+        
+        def get_risk_color(value: float, cvar_95: float, cvar_5: float) -> str:
+            """
+            Get color for risk metric based on position between CVaR(95) and CVaR(5).
+            Reddest at CVaR(95) and below, greenest at CVaR(5) and above.
+            """
+            if pd.isna(value) or pd.isna(cvar_95) or pd.isna(cvar_5):
+                return '#FFFFFF'
+            
+            # Normalize value between CVaR(95) and CVaR(5)
+            if cvar_5 == cvar_95:
+                return '#FFFFFF'
+            
+            # Calculate position (0 = CVaR(95), 1 = CVaR(5))
+            position = (value - cvar_95) / (cvar_5 - cvar_95)
+            position = max(0, min(1, position))  # Clamp to [0, 1]
+            
+            # Interpolate color from red to green
+            # Red: #FF4444, Green: #44FF44
+            if position < 0.5:
+                # Red to white
+                intensity = position * 2  # 0 to 1
+                r = 255
+                g = int(68 + (255 - 68) * intensity)
+                b = int(68 + (255 - 68) * intensity)
+            else:
+                # White to green
+                intensity = (position - 0.5) * 2  # 0 to 1
+                r = int(255 - (255 - 68) * intensity)
+                g = 255
+                b = int(255 - (255 - 68) * intensity)
+            
+            return f'#{r:02X}{g:02X}{b:02X}'
+        
+        def get_zscore_color(z_score: float) -> str:
+            """
+            Get color for z-score. Greenest at +1.645, reddest at -1.645.
+            Lighter colors closer to zero.
+            """
+            if pd.isna(z_score):
+                return '#FFFFFF'
+            
+            # Clamp z-score to [-1.645, 1.645] for color purposes
+            z_clamped = max(-1.645, min(1.645, z_score))
+            
+            # Normalize to [-1, 1]
+            normalized = z_clamped / 1.645
+            
+            if normalized >= 0:
+                # Positive: white to green
+                intensity = normalized
+                r = int(255 - (255 - 68) * intensity)
+                g = 255
+                b = int(255 - (255 - 68) * intensity)
+            else:
+                # Negative: white to red
+                intensity = abs(normalized)
+                r = 255
+                g = int(255 - (255 - 68) * intensity)
+                b = int(255 - (255 - 68) * intensity)
+            
+            return f'#{r:02X}{g:02X}{b:02X}'
+        
+        def get_status_emoji_summary(z_scores: list) -> str:
+            """
+            Get status emoji for summary table based on z-scores.
+            ✅ if any z ≥ +1.645 (exceptional positive)
+            ‼️ if any z ≤ -1.645 (exceptional negative)
+            🆗 otherwise (normal range)
+            """
+            if not z_scores:
+                return "❓"
+            
+            valid_z = [z for z in z_scores if not pd.isna(z)]
+            if not valid_z:
+                return "❓"
+            
+            min_z = min(valid_z)
+            max_z = max(valid_z)
+            
+            # Check for exceptional negative first (takes priority as warning)
+            if min_z <= -1.645:
+                return "‼️"
+            # Check for exceptional positive
+            elif max_z >= 1.645:
+                return "✅"
+            # Normal range
+            else:
+                return "🆗"
+        
+        def get_status_emoji_risk(ret: float, var_95: float, var_5: float) -> str:
+            """
+            Get status emoji for risk tables based on return vs VaR.
+            ✅ if return ≥ VaR(5) (exceptional gains)
+            ‼️ if return ≤ VaR(95) (exceptional losses)
+            🆗 otherwise (normal range)
+            """
+            if pd.isna(ret) or pd.isna(var_95) or pd.isna(var_5):
+                return "❓"
+            
+            if ret <= var_95:
+                return "‼️"
+            elif ret >= var_5:
+                return "✅"
+            else:
+                return "🆗"
+        
+        def get_status_emoji_flow(daily_vars: list, weekly_vars: list, monthly_vars: list) -> str:
+            """
+            Get status emoji for flow table based on percentage variations with period-specific thresholds.
+            Daily: ±2.5%, Weekly: ±5.0%, Monthly: ±7.5%
+            Priority: ‼️ first, then ✅, then 🆗
+            """
+            statuses = []
+            
+            # Daily thresholds: ±2.5%
+            for v in daily_vars:
+                if pd.notna(v):
+                    if v <= -2.5:
+                        statuses.append("‼️")
+                    elif v >= 2.5:
+                        statuses.append("✅")
+                    else:
+                        statuses.append("🆗")
+            
+            # Weekly thresholds: ±5.0%
+            for v in weekly_vars:
+                if pd.notna(v):
+                    if v <= -5.0:
+                        statuses.append("‼️")
+                    elif v >= 5.0:
+                        statuses.append("✅")
+                    else:
+                        statuses.append("🆗")
+            
+            # Monthly thresholds: ±7.5%
+            for v in monthly_vars:
+                if pd.notna(v):
+                    if v <= -7.5:
+                        statuses.append("‼️")
+                    elif v >= 7.5:
+                        statuses.append("✅")
+                    else:
+                        statuses.append("🆗")
+            
+            if not statuses:
+                return "❓"
+            
+            # Priority: ‼️ first, then ✅, then 🆗
+            if "‼️" in statuses:
+                return "‼️"
+            elif "✅" in statuses:
+                return "✅"
+            else:
+                return "🆗"
+        
+        def get_flow_color(pct: float, threshold: float) -> str:
+            """
+            Get color for flow value based on threshold.
+            Greenest at +threshold and above, reddest at -threshold and below.
+            White at 0.
+            """
+            if pd.isna(pct):
+                return '#888888'
+            
+            # Clamp to [-threshold, +threshold] for color calculation
+            clamped = max(-threshold, min(threshold, pct))
+            
+            # Normalize to [-1, 1]
+            normalized = clamped / threshold if threshold != 0 else 0
+            
+            if normalized >= 0:
+                # Positive: white to green
+                intensity = normalized
+                r = int(255 - (255 - 68) * intensity)
+                g = 255
+                b = int(255 - (255 - 68) * intensity)
+            else:
+                # Negative: white to red
+                intensity = abs(normalized)
+                r = 255
+                g = int(255 - (255 - 68) * intensity)
+                b = int(255 - (255 - 68) * intensity)
+            
+            return f'#{r:02X}{g:02X}{b:02X}'
+        
+        def format_pct(value: float) -> str:
+            """Format value as percentage."""
+            if pd.isna(value):
+                return "N/A"
+            return f"{value * 100:.2f}%"
+        
+        def format_zscore(value: float) -> str:
+            """Format z-score."""
+            if pd.isna(value):
+                return "N/A"
+            return f"{value:+.2f}σ"
+        
+        def format_currency_brl(value: float) -> str:
+            """Format value as Brazilian currency."""
+            if pd.isna(value) or value is None:
+                return "N/A"
+            
+            # Handle negative values
+            is_negative = value < 0
+            abs_value = abs(value)
+            
+            # Format with thousand separators and 2 decimal places
+            if abs_value >= 1_000_000_000:
+                formatted = f"R$ {abs_value/1_000_000_000:,.2f}B"
+            elif abs_value >= 1_000_000:
+                formatted = f"R$ {abs_value/1_000_000:,.2f}M"
+            else:
+                formatted = f"R$ {abs_value:,.2f}"
+            
+            # Replace commas and periods for Brazilian format
+            formatted = formatted.replace(',', 'X').replace('.', ',').replace('X', '.')
+            
+            return f"-{formatted}" if is_negative else formatted
+        
+        def format_integer(value: float) -> str:
+            """Format value as integer with thousand separators."""
+            if pd.isna(value) or value is None:
+                return "N/A"
+            return f"{int(value):,}".replace(',', '.')
+        
+        def format_transfer_variation(value: float, pct: float, threshold: float) -> tuple:
+            """Format transfer variation with absolute value on first line, percentage on second line.
+            Color based on threshold for the period.
+            """
+            if pd.isna(value) or value is None:
+                return "N/A", "#888888"
+            
+            is_positive = value >= 0
+            sign = "+" if is_positive else "-"
+            
+            # Get color based on threshold
+            color = get_flow_color(pct, threshold)
+            
+            # Format absolute value
+            abs_value = abs(value)
+            if abs_value >= 1_000_000_000:
+                formatted_val = f"R$ {abs_value/1_000_000_000:,.2f}B"
+            elif abs_value >= 1_000_000:
+                formatted_val = f"R$ {abs_value/1_000_000:,.2f}M"
+            elif abs_value >= 1_000:
+                formatted_val = f"R$ {abs_value/1_000:,.2f}K"
+            else:
+                formatted_val = f"R$ {abs_value:,.2f}"
+            
+            # Brazilian format
+            formatted_val = formatted_val.replace(',', 'X').replace('.', ',').replace('X', '.')
+            
+            # Two lines: absolute value on top, percentage below
+            formatted = f"{sign}{formatted_val}<br>({sign}{abs(pct):.2f}%)"
+            return formatted, color
+        
+        def format_investor_variation(value: float, pct: float, threshold: float) -> tuple:
+            """Format investor variation with absolute value on first line, percentage on second line.
+            Color based on threshold for the period.
+            """
+            if pd.isna(value) or value is None:
+                return "N/A", "#888888"
+            
+            is_positive = value >= 0
+            sign = "+" if is_positive else "-"
+            
+            # Get color based on threshold
+            color = get_flow_color(pct, threshold)
+            
+            # Two lines: absolute value on top, percentage below
+            formatted = f"{sign}{abs(int(value)):,}<br>({sign}{abs(pct):.2f}%)".replace(',', '.')
+            return formatted, color
+        
+        def render_html_table(html_content: str, height: int = None):
+            """Render HTML table using streamlit components for reliable display."""
+            # Wrap in a full HTML document with proper encoding
+            full_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <style>
+                    body {{
+                        margin: 0;
+                        padding: 0;
+                        background-color: transparent;
+                        font-family: 'Segoe UI', Arial, sans-serif;
+                    }}
+                </style>
+            </head>
+            <body>
+                {html_content}
+            </body>
+            </html>
+            """
+            # Calculate height based on content if not provided - no scrolling needed
+            if height is None:
+                # Estimate: header rows + data rows * row height + padding
+                row_count = html_content.count('<tr')
+                # Use larger row height to account for multi-line cells
+                height = max(150, row_count * 50 + 80)
+            
+            components.html(full_html, height=height, scrolling=False)
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # FUND SELECTION INTERFACE (Main Area)
+        # ═══════════════════════════════════════════════════════════════════════
+        
+        # Initialize session state for risk monitor
+        if 'risk_monitor_funds' not in st.session_state:
+            st.session_state['risk_monitor_funds'] = []
+        if 'risk_monitor_temp_funds' not in st.session_state:
+            st.session_state['risk_monitor_temp_funds'] = []
+        
+        # Create template for download
+        def create_risk_monitor_template():
+            """Create a template Excel file for risk monitor upload."""
+            template_df = pd.DataFrame({
+                'FUNDO DE INVESTIMENTO': [
+                    'Example Fund Name 1',
+                    'Example Fund Name 2',
+                    'Example Fund Name 3',
+                ]
+            })
+            return template_df
+        
+        st.markdown("### 📝 Select Funds to Monitor")
+        
+        selection_method = st.radio(
+            "Choose method:",
+            ["🔍 Search and Select", "📤 Upload Excel File"],
+            key="risk_monitor_method",
+            horizontal=True
+        )
+        
+        if selection_method == "📤 Upload Excel File":
+            st.markdown("---")
+            
+            # Template download
+            template_df = create_risk_monitor_template()
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                template_df.to_excel(writer, index=False, sheet_name='Funds')
+            buffer.seek(0)
+            
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                st.download_button(
+                    "📥 Download Template",
+                    buffer,
+                    "risk_monitor_template.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            with col2:
+                st.info("💡 Fill the template with fund names from the Fund Database, then upload.")
+            
+            uploaded_risk_file = st.file_uploader(
+                "Upload Excel with Fund Names",
+                type=['xlsx'],
+                key="risk_monitor_upload",
+                help="Excel file with column 'FUNDO DE INVESTIMENTO'"
+            )
+            
+            if uploaded_risk_file:
+                try:
+                    uploaded_df = pd.read_excel(uploaded_risk_file)
+                    if 'FUNDO DE INVESTIMENTO' in uploaded_df.columns:
+                        uploaded_funds = uploaded_df['FUNDO DE INVESTIMENTO'].dropna().unique().tolist()
+                        # Validate funds exist
+                        valid_funds = [f for f in uploaded_funds if f in fund_metrics['FUNDO DE INVESTIMENTO'].values]
+                        invalid_funds = [f for f in uploaded_funds if f not in fund_metrics['FUNDO DE INVESTIMENTO'].values]
+                        
+                        if invalid_funds:
+                            st.warning(f"⚠️ {len(invalid_funds)} funds not found: {', '.join(invalid_funds[:5])}{'...' if len(invalid_funds) > 5 else ''}")
+                        
+                        if valid_funds:
+                            st.success(f"✅ Found {len(valid_funds)} valid funds")
+                            
+                            if st.button("💾 Load These Funds", key="risk_load_uploaded", use_container_width=True):
+                                st.session_state['risk_monitor_funds'] = valid_funds
+                                st.rerun()
+                    else:
+                        st.error("❌ Column 'FUNDO DE INVESTIMENTO' not found in the file")
+                except Exception as e:
+                    st.error(f"Error reading file: {e}")
+        
+        else:  # Search and Select
+            st.markdown("---")
+            
+            available_funds = sorted(fund_metrics['FUNDO DE INVESTIMENTO'].dropna().unique().tolist())
+            # Filter out already selected funds
+            remaining_funds = [f for f in available_funds if f not in st.session_state['risk_monitor_funds']]
+            
+            col1, col2, col3 = st.columns([3, 1, 1])
+            
+            with col1:
+                selected_fund = st.selectbox(
+                    "Select Fund:",
+                    options=[""] + remaining_funds,
+                    key="risk_monitor_select",
+                    placeholder="Search for a fund..."
+                )
+            
+            with col2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                add_disabled = not selected_fund
+                if st.button("➕ Add", key="risk_add_fund", disabled=add_disabled, use_container_width=True):
+                    if selected_fund and selected_fund not in st.session_state['risk_monitor_funds']:
+                        st.session_state['risk_monitor_funds'].append(selected_fund)
+                        st.rerun()
+            
+            with col3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🗑️ Clear All", key="risk_clear_all", use_container_width=True):
+                    st.session_state['risk_monitor_funds'] = []
+                    st.rerun()
+        
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # SUPABASE CLOUD STORAGE
+        # ═══════════════════════════════════════════════════════════════════════
+        
+        with st.expander("☁️ Cloud Storage (Supabase)", expanded=False):
+            supabase_client = get_supabase_client()
+            
+            if not SUPABASE_AVAILABLE:
+                st.warning("⚠️ Supabase library not installed. Run: `pip install supabase`")
+            elif not supabase_client:
+                st.info("""
+                **Configure Supabase to save/load monitor configurations:**
+                
+                1. Create a Supabase account at https://supabase.com
+                2. Create a new project
+                3. Run the SQL below to create the table
+                4. Set `SUPABASE_URL` and `SUPABASE_KEY` in Streamlit secrets
+                """)
+                
+                st.code("""
+-- SQL to create the risk_monitor_funds table in Supabase
+CREATE TABLE risk_monitor_funds (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'default',
+    monitor_name TEXT NOT NULL,
+    funds_data JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id, monitor_name)
+);
+
+-- Create index for faster lookups
+CREATE INDEX idx_risk_monitor_user_id ON risk_monitor_funds(user_id);
+
+-- Enable Row Level Security (optional)
+ALTER TABLE risk_monitor_funds ENABLE ROW LEVEL SECURITY;
+
+-- Policy to allow all operations
+CREATE POLICY "Allow all operations" ON risk_monitor_funds
+    FOR ALL USING (true) WITH CHECK (true);
+                """, language="sql")
+            else:
+                st.success("✅ Connected to Supabase")
+                
+                current_user = st.session_state.get('username', 'default')
+                
+                save_col, load_col = st.columns(2)
+                
+                with save_col:
+                    st.markdown("##### 💾 Save Current Selection")
+                    
+                    if st.session_state['risk_monitor_funds']:
+                        save_name = st.text_input(
+                            "Monitor Name:",
+                            value=f"RiskMonitor_{datetime.now().strftime('%Y%m%d')}",
+                            key="risk_save_name"
+                        )
+                        
+                        if st.button("☁️ Save to Supabase", key="risk_save_btn", use_container_width=True):
+                            if save_risk_monitor_to_supabase(save_name, st.session_state['risk_monitor_funds'], current_user):
+                                st.success(f"✅ Monitor '{save_name}' saved!")
+                                st.rerun()
+                    else:
+                        st.info("Select funds first to save them")
+                
+                with load_col:
+                    st.markdown("##### 📂 Load Saved Monitor")
+                    
+                    saved_monitors = list_risk_monitors_from_supabase(current_user)
+                    
+                    if saved_monitors:
+                        monitor_options = [m['monitor_name'] for m in saved_monitors]
+                        selected_monitor = st.selectbox(
+                            "Select Monitor:",
+                            monitor_options,
+                            key="risk_load_select"
+                        )
+                        
+                        btn_col1, btn_col2 = st.columns(2)
+                        
+                        with btn_col1:
+                            if st.button("📥 Load", key="risk_load_btn", use_container_width=True):
+                                loaded = load_risk_monitor_from_supabase(selected_monitor, current_user)
+                                if loaded:
+                                    st.session_state['risk_monitor_funds'] = loaded
+                                    st.success(f"✅ Loaded {len(loaded)} funds")
+                                    st.rerun()
+                        
+                        with btn_col2:
+                            if st.button("🗑️ Delete", key="risk_delete_btn", use_container_width=True):
+                                if delete_risk_monitor_from_supabase(selected_monitor, current_user):
+                                    st.success("✅ Deleted!")
+                                    st.rerun()
+                    else:
+                        st.info("No saved monitors found")
+        
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # MAIN RISK MONITOR DISPLAY
+        # ═══════════════════════════════════════════════════════════════════════
+        
+        if not st.session_state['risk_monitor_funds']:
+            st.info("👆 Select funds above to monitor their risk metrics")
+        else:
+            # Frequency selection
+            frequency_option = st.radio(
+                "View:",
+                ["📊 Summary", "📅 Daily", "📆 Weekly", "🗓️ Monthly"],
+                horizontal=True,
+                key="risk_frequency"
+            )
+            
+            st.markdown("---")
+            
+            # Get fund data with categories
+            monitor_funds = st.session_state['risk_monitor_funds']
+            
+            # Build fund info with categories
+            fund_info_list = []
+            for fund_name in monitor_funds:
+                fund_row = fund_metrics[fund_metrics['FUNDO DE INVESTIMENTO'] == fund_name]
+                if len(fund_row) > 0:
+                    category = fund_row['CATEGORIA BTG'].iloc[0] if 'CATEGORIA BTG' in fund_row.columns else 'Other'
+                    cnpj = fund_row['CNPJ'].iloc[0] if 'CNPJ' in fund_row.columns else None
+                    cnpj_standard = fund_row['CNPJ_STANDARD'].iloc[0] if 'CNPJ_STANDARD' in fund_row.columns else standardize_cnpj(cnpj) if cnpj else None
+                    
+                    fund_info_list.append({
+                        'name': fund_name,
+                        'category': category if pd.notna(category) else 'Other',
+                        'cnpj_standard': cnpj_standard
+                    })
+            
+            # Sort by category, then alphabetically by name
+            fund_info_list = sorted(fund_info_list, key=lambda x: (x['category'], x['name']))
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # CACHED METRICS CALCULATION
+            # ═══════════════════════════════════════════════════════════════════
+            
+            # Create a hash of the fund list for cache invalidation
+            funds_hash = hashlib.md5(str(sorted(monitor_funds)).encode()).hexdigest()
+            
+            # Calculate metrics for all funds (cached)
+            if f'risk_metrics_cache_{funds_hash}' not in st.session_state:
+                fund_metrics_data = {}
+                fund_flow_data = {}
+                
+                with st.spinner("Calculating risk metrics..."):
+                    for fund_info in fund_info_list:
+                        fund_name = fund_info['name']
+                        cnpj_standard = fund_info['cnpj_standard']
+                        
+                        if cnpj_standard and fund_details is not None:
+                            returns_result = get_fund_returns(fund_details, cnpj_standard, period_months=None)
+                            if returns_result is not None:
+                                daily_returns = returns_result[0]
+                                
+                                # Get returns for each frequency using rolling windows
+                                daily_tuple = get_returns_for_frequency(daily_returns, 'daily')
+                                weekly_tuple = get_returns_for_frequency(daily_returns, 'weekly')
+                                monthly_tuple = get_returns_for_frequency(daily_returns, 'monthly')
+                                
+                                # Calculate metrics for each frequency
+                                fund_metrics_data[fund_name] = {
+                                    'category': fund_info['category'],
+                                    'daily': calculate_risk_metrics_cached(daily_tuple),
+                                    'weekly': calculate_risk_metrics_cached(weekly_tuple),
+                                    'monthly': calculate_risk_metrics_cached(monthly_tuple)
+                                }
+                        
+                        # Calculate fund flow metrics using CNPJ_STANDARD
+                        if cnpj_standard:
+                            flow_data = calculate_fund_flow_metrics(cnpj_standard, funds_hash)
+                            if flow_data:
+                                fund_flow_data[fund_name] = flow_data
+                
+                st.session_state[f'risk_metrics_cache_{funds_hash}'] = fund_metrics_data
+                st.session_state[f'risk_flow_cache_{funds_hash}'] = fund_flow_data
+            else:
+                fund_metrics_data = st.session_state[f'risk_metrics_cache_{funds_hash}']
+                fund_flow_data = st.session_state.get(f'risk_flow_cache_{funds_hash}', {})
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # COMMON TABLE STYLES
+            # ═══════════════════════════════════════════════════════════════════
+            
+            table_style = """
+            <style>
+                .risk-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    font-size: 13px;
+                    background-color: #1a1a1a;
+                }
+                .risk-table th {
+                    background-color: #FFD700;
+                    color: #000000;
+                    padding: 10px 8px;
+                    text-align: center;
+                    font-weight: bold;
+                    border: 1px solid #333;
+                }
+                .risk-table td {
+                    padding: 8px;
+                    text-align: center;
+                    border: 1px solid #333;
+                    color: #FFFFFF;
+                }
+                .risk-table .category-row td {
+                    background-color: #3a3a3a;
+                    font-weight: bold;
+                    text-align: left;
+                    padding-left: 10px;
+                    color: #FFD700;
+                }
+                .risk-table .fund-name {
+                    text-align: left;
+                    padding-left: 20px;
+                }
+            </style>
+            """
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # DISPLAY TABLES
+            # ═══════════════════════════════════════════════════════════════════
+            
+            if frequency_option == "📊 Summary":
+                # ═══════════════════════════════════════════════════════════════
+                # SUMMARY TABLE 1: Risk Metrics
+                # ═══════════════════════════════════════════════════════════════
+                st.markdown("### 📊 Risk Summary - Returns & Z-Scores")
+                
+                html = table_style + """
+                <table class="risk-table">
+                    <tr>
+                        <th rowspan="2">INVESTMENT FUND</th>
+                        <th rowspan="2">STATUS</th>
+                        <th colspan="2">DAILY</th>
+                        <th colspan="2">WEEKLY</th>
+                        <th colspan="2">MONTHLY</th>
+                    </tr>
+                    <tr>
+                        <th>RETURN</th>
+                        <th>STD</th>
+                        <th>RETURN</th>
+                        <th>STD</th>
+                        <th>RETURN</th>
+                        <th>STD</th>
+                    </tr>
+                """
+                
+                current_category = None
+                
+                for fund_info in fund_info_list:
+                    fund_name = fund_info['name']
+                    category = fund_info['category']
+                    
+                    # Category separator row
+                    if category != current_category:
+                        html += f'<tr class="category-row"><td colspan="8">{category}</td></tr>'
+                        current_category = category
+                    
+                    if fund_name in fund_metrics_data:
+                        data = fund_metrics_data[fund_name]
+                        
+                        # Collect z-scores for status
+                        z_scores = []
+                        for freq in ['daily', 'weekly', 'monthly']:
+                            if data[freq]:
+                                z_scores.append(data[freq]['z_score'])
+                        
+                        status = get_status_emoji_summary(z_scores)
+                        
+                        html += f'<tr><td class="fund-name">{fund_name}</td><td>{status}</td>'
+                        
+                        for freq in ['daily', 'weekly', 'monthly']:
+                            if data[freq]:
+                                ret = data[freq]['return']
+                                z = data[freq]['z_score']
+                                z_color = get_zscore_color(z)
+                                
+                                html += f'<td style="color: #FFFFFF;">{format_pct(ret)}</td>'
+                                html += f'<td style="color: {z_color};">{format_zscore(z)}</td>'
+                            else:
+                                html += '<td>N/A</td><td>N/A</td>'
+                        
+                        html += '</tr>'
+                    else:
+                        html += f'<tr><td class="fund-name">{fund_name}</td><td>❓</td>'
+                        html += '<td>N/A</td><td>N/A</td>' * 3
+                        html += '</tr>'
+                
+                html += '</table>'
+                render_html_table(html)
+               
+                st.markdown("---")
+                
+                # ═══════════════════════════════════════════════════════════════
+                # SUMMARY TABLE 2: Fund Flows (AUM & Shareholders)
+                # ═══════════════════════════════════════════════════════════════
+                st.markdown("### 💰 Fund Flows - AUM & Shareholders")
+                
+                html = table_style + """
+                <table class="risk-table">
+                    <tr>
+                        <th rowspan="2">INVESTMENT FUND</th>
+                        <th rowspan="2">STATUS</th>
+                        <th rowspan="2">AUM</th>
+                        <th rowspan="2">SHAREHOLDERS</th>
+                        <th colspan="2">DAILY</th>
+                        <th colspan="2">WEEKLY</th>
+                        <th colspan="2">MONTHLY</th>
+                    </tr>
+                    <tr>
+                        <th>ΔTRANSFERS</th>
+                        <th>ΔINVESTORS</th>
+                        <th>ΔTRANSFERS</th>
+                        <th>ΔINVESTORS</th>
+                        <th>ΔTRANSFERS</th>
+                        <th>ΔINVESTORS</th>
+                    </tr>
+                """
+                
+                current_category = None
+                
+                for fund_info in fund_info_list:
+                    fund_name = fund_info['name']
+                    category = fund_info['category']
+                    
+                    # Category separator row
+                    if category != current_category:
+                        html += f'<tr class="category-row"><td colspan="10">{category}</td></tr>'
+                        current_category = category
+                    
+                    if fund_name in fund_flow_data:
+                        flow = fund_flow_data[fund_name]
+                        
+                        # Collect percentage variations for status with period-specific thresholds
+                        daily_vars = [
+                            flow.get('daily_transfers_pct', 0),
+                            flow.get('daily_investors_pct', 0),
+                        ]
+                        weekly_vars = [
+                            flow.get('weekly_transfers_pct', 0),
+                            flow.get('weekly_investors_pct', 0),
+                        ]
+                        monthly_vars = [
+                            flow.get('monthly_transfers_pct', 0),
+                            flow.get('monthly_investors_pct', 0),
+                        ]
+                        status = get_status_emoji_flow(daily_vars, weekly_vars, monthly_vars)
+                        
+                        # Format values
+                        aum = format_currency_brl(flow.get('aum'))
+                        shareholders = format_integer(flow.get('shareholders'))
+                        
+                        # Daily (threshold: 2.5%)
+                        daily_transfers_fmt, daily_transfers_color = format_transfer_variation(
+                            flow.get('daily_transfers'), flow.get('daily_transfers_pct', 0), 2.5
+                        )
+                        daily_investors_fmt, daily_investors_color = format_investor_variation(
+                            flow.get('daily_investors'), flow.get('daily_investors_pct', 0), 2.5
+                        )
+                        
+                        # Weekly (threshold: 5.0%)
+                        weekly_transfers_fmt, weekly_transfers_color = format_transfer_variation(
+                            flow.get('weekly_transfers'), flow.get('weekly_transfers_pct', 0), 5.0
+                        )
+                        weekly_investors_fmt, weekly_investors_color = format_investor_variation(
+                            flow.get('weekly_investors'), flow.get('weekly_investors_pct', 0), 5.0
+                        )
+                        
+                        # Monthly (threshold: 7.5%)
+                        monthly_transfers_fmt, monthly_transfers_color = format_transfer_variation(
+                            flow.get('monthly_transfers'), flow.get('monthly_transfers_pct', 0), 7.5
+                        )
+                        monthly_investors_fmt, monthly_investors_color = format_investor_variation(
+                            flow.get('monthly_investors'), flow.get('monthly_investors_pct', 0), 7.5
+                        )
+                        
+                        html += f'''<tr>
+                            <td class="fund-name">{fund_name}</td>
+                            <td>{status}</td>
+                            <td style="color: #FFFFFF;">{aum}</td>
+                            <td style="color: #FFFFFF;">{shareholders}</td>
+                            <td style="color: {daily_transfers_color};">{daily_transfers_fmt}</td>
+                            <td style="color: {daily_investors_color};">{daily_investors_fmt}</td>
+                            <td style="color: {weekly_transfers_color};">{weekly_transfers_fmt}</td>
+                            <td style="color: {weekly_investors_color};">{weekly_investors_fmt}</td>
+                            <td style="color: {monthly_transfers_color};">{monthly_transfers_fmt}</td>
+                            <td style="color: {monthly_investors_color};">{monthly_investors_fmt}</td>
+                        </tr>'''
+                    else:
+                        html += f'''<tr>
+                            <td class="fund-name">{fund_name}</td>
+                            <td>❓</td>
+                            <td>N/A</td><td>N/A</td>
+                            <td>N/A</td><td>N/A</td>
+                            <td>N/A</td><td>N/A</td>
+                            <td>N/A</td><td>N/A</td>
+                        </tr>'''
+                
+                html += '</table>'
+                render_html_table(html)
+                
+            else:
+                # ═══════════════════════════════════════════════════════════════
+                # INDIVIDUAL FREQUENCY TABLES (Daily, Weekly, Monthly)
+                # ═══════════════════════════════════════════════════════════════
+                freq_map = {
+                    "📅 Daily": "daily",
+                    "📆 Weekly": "weekly", 
+                    "🗓️ Monthly": "monthly"
+                }
+                freq_key = freq_map[frequency_option]
+                freq_title = frequency_option.split(" ")[1]
+                
+                # Window description
+                window_desc = {
+                    "daily": "1 day",
+                    "weekly": "5-day rolling window",
+                    "monthly": "22-day rolling window"
+                }
+                
+                st.markdown(f"### {frequency_option} Risk Metrics ({window_desc[freq_key]})")
+                
+                html = table_style + """
+                <table class="risk-table">
+                    <tr>
+                        <th>INVESTMENT FUND</th>
+                        <th>STATUS</th>
+                        <th>CVaR(95)</th>
+                        <th>VaR(95)</th>
+                        <th>RETURN</th>
+                        <th>VaR(5)</th>
+                        <th>CVaR(5)</th>
+                    </tr>
+                """
+                
+                current_category = None
+                
+                for fund_info in fund_info_list:
+                    fund_name = fund_info['name']
+                    category = fund_info['category']
+                    
+                    # Category separator row
+                    if category != current_category:
+                        html += f'<tr class="category-row"><td colspan="7">{category}</td></tr>'
+                        current_category = category
+                    
+                    if fund_name in fund_metrics_data and fund_metrics_data[fund_name][freq_key]:
+                        data = fund_metrics_data[fund_name][freq_key]
+                        
+                        cvar_95 = data['cvar_95']
+                        var_95 = data['var_95']
+                        ret = data['return']
+                        var_5 = data['var_5']
+                        cvar_5 = data['cvar_5']
+                        
+                        # Get status based on return vs VaR
+                        status = get_status_emoji_risk(ret, var_95, var_5)
+                        
+                        # Get colors based on position between CVaR(95) and CVaR(5)
+                        cvar_95_color = get_risk_color(cvar_95, cvar_95, cvar_5)
+                        var_95_color = get_risk_color(var_95, cvar_95, cvar_5)
+                        var_5_color = get_risk_color(var_5, cvar_95, cvar_5)
+                        cvar_5_color = get_risk_color(cvar_5, cvar_95, cvar_5)
+                        
+                        html += f'''<tr>
+                            <td class="fund-name">{fund_name}</td>
+                            <td>{status}</td>
+                            <td style="color: {cvar_95_color};">{format_pct(cvar_95)}</td>
+                            <td style="color: {var_95_color};">{format_pct(var_95)}</td>
+                            <td style="color: #FFFFFF;">{format_pct(ret)}</td>
+                            <td style="color: {var_5_color};">{format_pct(var_5)}</td>
+                            <td style="color: {cvar_5_color};">{format_pct(cvar_5)}</td>
+                        </tr>'''
+                    else:
+                        html += f'''<tr>
+                            <td class="fund-name">{fund_name}</td>
+                            <td>❓</td>
+                            <td style="color: #888;">N/A</td>
+                            <td style="color: #888;">N/A</td>
+                            <td style="color: #888;">N/A</td>
+                            <td style="color: #888;">N/A</td>
+                            <td style="color: #888;">N/A</td>
+                        </tr>'''
+                
+                html += '</table>'
+                render_html_table(html)
+                
+                st.markdown("---")
+                st.markdown(f"""
+                **{freq_title} Metrics ({window_desc[freq_key]}):**
+                - **STATUS**: ✅ return ≥ VaR(5) (exceptional gains) | 🆗 VaR(95) < return < VaR(5) (normal) | ‼️ return ≤ VaR(95) (exceptional losses)
+                - **CVaR(95)**: Expected loss in worst 5% of returns (reddest)
+                - **VaR(95)**: 5th percentile of returns
+                - **Return**: Most recent {window_desc[freq_key]} return (white)
+                - **VaR(5)**: 95th percentile of returns
+                - **CVaR(5)**: Expected gain in best 5% of returns (greenest)
+                
+                *Color gradient: 🔴 CVaR(95) → ⚪ Zero → 🟢 CVaR(5)*
+                """)
+
 
 if __name__ == "__main__":
     main()
-
-
-
