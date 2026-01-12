@@ -384,6 +384,14 @@ def login_page():
             margin-bottom: 10px;
             letter-spacing: 2px;
         }
+                
+        .stApp {
+            background-image: url('https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeia6qj2jol4spdjraxdlohre7yg7wofe33awh2udn6harmg3an4mdq');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }
         </style>
     """, unsafe_allow_html=True)
     
@@ -540,7 +548,7 @@ BLACK_GOLD_STYLE = """
     
     /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
-        background-color: #1a1a1a;
+        background-color: #000000;
         border-bottom: 2px solid #D4AF37;
     }
     
@@ -859,7 +867,7 @@ def load_fund_data(file_path=None, uploaded_file=None):
         numeric_cols = df.select_dtypes(include=['object']).columns
         for col in numeric_cols:
             if col not in ['FUNDO DE INVESTIMENTO', 'CNPJ', 'CNPJ_STANDARD', 'GESTOR', 
-                          'CATEGORIA BTG', 'SUBCATEGORIA BTG', 'STATUS', 'LAST_UPDATE', 'TRIBUTAÇÃO', 'LIQUIDEZ']:
+                          'CATEGORIA BTG', 'SUBCATEGORIA BTG', 'STATUS', 'LAST_UPDATE', 'TRIBUTAÇÃO', 'LIQUIDEZ', 'SUITABILITY']:
                 df[col] = pd.to_numeric(df[col], errors='ignore')
         
         return df
@@ -2186,7 +2194,7 @@ class PortfolioMetrics:
         expected_gain = np.mean(upper_tail)
         if expected_gain == 0:
             return np.inf if expected_loss > 0 else 1.0
-        return expected_loss / expected_gain
+        return expected_gain / np.abs(expected_loss)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3237,14 +3245,19 @@ def main():
             info_col5, info_col6, info_col7, info_col8 = st.columns(4)
             
             with info_col5:
-                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>TAXATION (TRIBUTAÇÃO)</p>", unsafe_allow_html=True)
+                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>TAXATION</p>", unsafe_allow_html=True)
                 tributacao = fund_info.get('TRIBUTAÇÃO', 'N/A')
                 st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{tributacao}</p>", unsafe_allow_html=True)
             
             with info_col6:
-                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>LIQUIDITY (LIQUIDEZ)</p>", unsafe_allow_html=True)
+                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>LIQUIDITY</p>", unsafe_allow_html=True)
                 liquidez = fund_info.get('LIQUIDEZ', 'N/A')
                 st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{liquidez}</p>", unsafe_allow_html=True)
+
+            with info_col7:
+                st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>SUITABILITY</p>", unsafe_allow_html=True)
+                suitability = fund_info.get('SUITABILITY', 'N/A')
+                st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{suitability}</p>", unsafe_allow_html=True)
             
             st.markdown("---")
             
@@ -4165,7 +4178,7 @@ def main():
         
         # Define column categories for easier selection
         basic_info_cols = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR', 'CATEGORIA BTG', 
-                          'SUBCATEGORIA BTG', 'STATUS', 'VL_PATRIM_LIQ', 'NR_COTST', 'TRIBUTAÇÃO', 'LIQUIDEZ']
+                          'SUBCATEGORIA BTG', 'STATUS', 'VL_PATRIM_LIQ', 'NR_COTST', 'TRIBUTAÇÃO', 'LIQUIDEZ', 'SUITABILITY']
         
         return_cols = [col for col in fund_metrics.columns if 'RETURN' in col] + \
                       [col for col in fund_metrics.columns if 'EXCESS' in col]
@@ -7633,6 +7646,39 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
             else:
                 return "🆗"
         
+        def get_status_emoji_charts(fund_data: dict) -> str:
+            """
+            Get status emoji for Charts view based on returns vs VaR thresholds.
+            Priority: ‼️ if any return ≤ VaR(95) > ✅ if any return ≥ VaR(5) > 🆗 otherwise
+            One emoji per fund across all periods.
+            """
+            statuses = []
+            
+            for freq in ['daily', 'weekly', 'monthly']:
+                if fund_data.get(freq):
+                    ret = fund_data[freq].get('return')
+                    var_95 = fund_data[freq].get('var_95')
+                    var_5 = fund_data[freq].get('var_5')
+                    
+                    if ret is not None and var_95 is not None and var_5 is not None:
+                        if ret <= var_95:
+                            statuses.append("‼️")
+                        elif ret >= var_5:
+                            statuses.append("✅")
+                        else:
+                            statuses.append("🆗")
+            
+            if not statuses:
+                return "❓"
+            
+            # Priority: ‼️ first, then ✅, then 🆗
+            if "‼️" in statuses:
+                return "‼️"
+            elif "✅" in statuses:
+                return "✅"
+            else:
+                return "🆗"
+        
         def get_flow_color(pct: float, threshold: float) -> str:
             """
             Get color for flow value based on threshold.
@@ -7750,6 +7796,136 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
             # Two lines: absolute value on top, percentage below
             formatted = f"{sign}{abs(int(value)):,}<br>({sign}{abs(pct):.2f}%)".replace(',', '.')
             return formatted, color
+        
+        def create_return_distribution_chart(returns_tuple: tuple, metrics: dict, frequency: str, latest_return: float = None):
+            """
+            Create return distribution chart with KDE, VaR, CVaR lines and latest return point.
+            
+            Args:
+                returns_tuple: Tuple of (values, dates) for the returns
+                metrics: Dict with var_95, cvar_95, var_5, cvar_5 values
+                frequency: 'daily', 'weekly', or 'monthly'
+                latest_return: The most recent return value to highlight
+            """
+            if returns_tuple is None or len(returns_tuple[0]) < 10:
+                return None
+            
+            returns_data = pd.Series(returns_tuple[0])
+            returns_pct = returns_data * 100
+            
+            # Get metrics (already in decimal form)
+            var_95 = metrics.get('var_95', 0) * 100 if metrics.get('var_95') else None
+            cvar_95 = metrics.get('cvar_95', 0) * 100 if metrics.get('cvar_95') else None
+            var_5 = metrics.get('var_5', 0) * 100 if metrics.get('var_5') else None
+            
+            # Latest return in percentage
+            latest_pct = latest_return * 100 if latest_return is not None else None
+            
+            fig = go.Figure()
+            
+            # Histogram
+            fig.add_trace(go.Histogram(
+                x=returns_pct,
+                nbinsx=40,
+                name='Distribution',
+                marker=dict(color='#D4AF37', opacity=0.5),
+                histnorm='probability density'
+            ))
+            
+            # KDE curve
+            if len(returns_pct.dropna()) > 1:
+                kde = gaussian_kde(returns_pct.dropna())
+                x_range = np.linspace(returns_pct.min(), returns_pct.max(), 300)
+                kde_values = kde(x_range)
+                
+                # Full KDE (gold)
+                fig.add_trace(go.Scatter(
+                    x=x_range,
+                    y=kde_values,
+                    mode='lines',
+                    name='KDE',
+                    line=dict(color='#FFD700', width=2)
+                ))
+            
+            # VaR(95) line - left tail threshold (dashed red)
+            if var_95 is not None:
+                fig.add_vline(
+                    x=var_95,
+                    line_dash="dash",
+                    line_color="#FF4500",
+                    annotation_text=f"VaR(95): {var_95:.2f}%",
+                    annotation_position="bottom left",
+                    annotation_font_size=10
+                )
+            
+            # CVaR(95) line - expected shortfall (dotted red)
+            if cvar_95 is not None:
+                fig.add_vline(
+                    x=cvar_95,
+                    line_dash="dot",
+                    line_color="#FF0000",
+                    annotation_text=f"CVaR(95): {cvar_95:.2f}%",
+                    annotation_position="top left",
+                    annotation_font_size=10
+                )
+            
+            # VaR(5) line - right tail threshold (dashed green)
+            if var_5 is not None:
+                fig.add_vline(
+                    x=var_5,
+                    line_dash="dash",
+                    line_color="#00FF00",
+                    annotation_text=f"VaR(5): {var_5:.2f}%",
+                    annotation_position="bottom right",
+                    annotation_font_size=10
+                )
+            
+            # Latest return point
+            if latest_pct is not None and len(returns_pct.dropna()) > 1:
+                # Get KDE value at latest return for y position
+                kde = gaussian_kde(returns_pct.dropna())
+                y_pos = kde(latest_pct)[0]
+                
+                # Determine color based on position
+                if var_95 is not None and latest_pct <= var_95:
+                    point_color = '#FF0000'  # Red - below VaR(95)
+                elif var_5 is not None and latest_pct >= var_5:
+                    point_color = '#00FF00'  # Green - above VaR(5)
+                else:
+                    point_color = '#FFFFFF'  # White - normal range
+                
+                fig.add_trace(go.Scatter(
+                    x=[latest_pct],
+                    y=[y_pos],
+                    mode='markers',
+                    name=f'Latest: {latest_pct:.2f}%',
+                    marker=dict(
+                        color=point_color,
+                        size=8,
+                        symbol='circle',
+                        line=dict(color='#000000', width=1)
+                    ),
+                    showlegend=True
+                ))
+            
+            fig.update_layout(
+                xaxis_title='Return (%)',
+                yaxis_title='Density',
+                template=PLOTLY_TEMPLATE,
+                height=280,
+                margin=dict(l=40, r=20, t=20, b=40),
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,
+                    xanchor='center',
+                    x=0.5,
+                    font=dict(size=9)
+                ),
+                showlegend=True
+            )
+            
+            return fig
         
         def render_html_table(html_content: str, height: int = None):
             """Render HTML table using streamlit components for reliable display."""
@@ -8006,7 +8182,7 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
             # Frequency selection
             frequency_option = st.radio(
                 "View:",
-                ["📊 Summary", "📅 Daily", "📆 Weekly", "🗓️ Monthly"],
+                ["📊 Z-Scores", "📈 Charts", "💰 Flows", "📅 Daily", "📆 Weekly", "🗓️ Monthly"],
                 horizontal=True,
                 key="risk_frequency"
             )
@@ -8016,23 +8192,26 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
             # Get fund data with categories
             monitor_funds = st.session_state['risk_monitor_funds']
             
-            # Build fund info with categories
+            # Build fund info with sub-categories
             fund_info_list = []
             for fund_name in monitor_funds:
                 fund_row = fund_metrics[fund_metrics['FUNDO DE INVESTIMENTO'] == fund_name]
                 if len(fund_row) > 0:
-                    category = fund_row['CATEGORIA BTG'].iloc[0] if 'CATEGORIA BTG' in fund_row.columns else 'Other'
+                    subcategory = fund_row['SUBCATEGORIA BTG'].iloc[0] if 'SUBCATEGORIA BTG' in fund_row.columns else 'Other'
+                    # Rename "-" to "Multimercado"
+                    if pd.isna(subcategory) or subcategory == '-' or subcategory == '':
+                        subcategory = 'Multimercado'
                     cnpj = fund_row['CNPJ'].iloc[0] if 'CNPJ' in fund_row.columns else None
                     cnpj_standard = fund_row['CNPJ_STANDARD'].iloc[0] if 'CNPJ_STANDARD' in fund_row.columns else standardize_cnpj(cnpj) if cnpj else None
                     
                     fund_info_list.append({
                         'name': fund_name,
-                        'category': category if pd.notna(category) else 'Other',
+                        'subcategory': subcategory,
                         'cnpj_standard': cnpj_standard
                     })
             
-            # Sort by category, then alphabetically by name
-            fund_info_list = sorted(fund_info_list, key=lambda x: (x['category'], x['name']))
+            # Sort by sub-category, then alphabetically by name
+            fund_info_list = sorted(fund_info_list, key=lambda x: (x['subcategory'], x['name']))
             
             # ═══════════════════════════════════════════════════════════════════
             # CACHED METRICS CALCULATION
@@ -8063,10 +8242,14 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                                 
                                 # Calculate metrics for each frequency
                                 fund_metrics_data[fund_name] = {
-                                    'category': fund_info['category'],
+                                    'subcategory': fund_info['subcategory'],
                                     'daily': calculate_risk_metrics_cached(daily_tuple),
                                     'weekly': calculate_risk_metrics_cached(weekly_tuple),
-                                    'monthly': calculate_risk_metrics_cached(monthly_tuple)
+                                    'monthly': calculate_risk_metrics_cached(monthly_tuple),
+                                    # Store returns tuples for distribution charts
+                                    'daily_returns': daily_tuple,
+                                    'weekly_returns': weekly_tuple,
+                                    'monthly_returns': monthly_tuple
                                 }
                         
                         # Calculate fund flow metrics using CNPJ_STANDARD
@@ -8126,9 +8309,9 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
             # DISPLAY TABLES
             # ═══════════════════════════════════════════════════════════════════
             
-            if frequency_option == "📊 Summary":
+            if frequency_option == "📊 Z-Scores":
                 # ═══════════════════════════════════════════════════════════════
-                # SUMMARY TABLE 1: Risk Metrics
+                # Z-SCORES TABLE: Risk Metrics (Static HTML Table)
                 # ═══════════════════════════════════════════════════════════════
                 st.markdown("### 📊 Risk Summary - Returns & Z-Scores")
                 
@@ -8151,16 +8334,16 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                     </tr>
                 """
                 
-                current_category = None
+                current_subcategory = None
                 
                 for fund_info in fund_info_list:
                     fund_name = fund_info['name']
-                    category = fund_info['category']
+                    subcategory = fund_info['subcategory']
                     
-                    # Category separator row
-                    if category != current_category:
-                        html += f'<tr class="category-row"><td colspan="8">{category}</td></tr>'
-                        current_category = category
+                    # Sub-category separator row
+                    if subcategory != current_subcategory:
+                        html += f'<tr class="category-row"><td colspan="8">{subcategory}</td></tr>'
+                        current_subcategory = subcategory
                     
                     if fund_name in fund_metrics_data:
                         data = fund_metrics_data[fund_name]
@@ -8168,21 +8351,26 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                         # Collect z-scores for status
                         z_scores = []
                         for freq in ['daily', 'weekly', 'monthly']:
-                            if data[freq]:
-                                z_scores.append(data[freq]['z_score'])
+                            if data.get(freq):
+                                z_scores.append(data[freq].get('z_score'))
                         
                         status = get_status_emoji_summary(z_scores)
                         
                         html += f'<tr><td class="fund-name">{fund_name}</td><td>{status}</td>'
                         
                         for freq in ['daily', 'weekly', 'monthly']:
-                            if data[freq]:
-                                ret = data[freq]['return']
-                                z = data[freq]['z_score']
+                            if data.get(freq):
+                                ret = data[freq].get('return')
+                                z = data[freq].get('z_score')
+                                cvar_95 = data[freq].get('cvar_95')
+                                cvar_5 = data[freq].get('cvar_5')
+                                
+                                # Color return based on position in range
+                                ret_color = get_risk_color(ret, cvar_95, cvar_5)
                                 z_color = get_zscore_color(z)
                                 
-                                html += f'<td style="color: #FFFFFF;">{format_pct(ret)}</td>'
-                                html += f'<td style="color: {z_color};">{format_zscore(z)}</td>'
+                                html += f'<td style="color: {ret_color};">{format_pct(ret)}</td>'
+                                html += f'<td style="color: {z_color}; font-weight: bold;">{format_zscore(z)}</td>'
                             else:
                                 html += '<td>N/A</td><td>N/A</td>'
                         
@@ -8194,11 +8382,101 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                 
                 html += '</table>'
                 render_html_table(html)
-               
-                st.markdown("---")
                 
+                st.markdown("""
+                **Legend:**
+                - **STATUS**: ✅ z ≥ +1.645 (exceptional positive) | 🆗 -1.645 < z < +1.645 (normal) | ‼️ z ≤ -1.645 (exceptional negative)
+                - **RETURN**: Colored from 🔴 CVaR(95) to 🟢 CVaR(5)
+                - **STD**: Z-score of latest rolling window return (bold, green = positive, red = negative)
+                - Rolling windows: Daily (1 day), Weekly (5 days), Monthly (22 days)
+                """)
+            
+            elif frequency_option == "📈 Charts":
                 # ═══════════════════════════════════════════════════════════════
-                # SUMMARY TABLE 2: Fund Flows (AUM & Shareholders)
+                # CHARTS VIEW: Return Distribution Charts
+                # ═══════════════════════════════════════════════════════════════
+                st.markdown("### 📈 Return Distribution Charts")
+                
+                # Expand/Collapse buttons
+                btn_col1, btn_col2, spacer = st.columns([1, 1, 6])
+                with btn_col1:
+                    if st.button("▼ Expand All", key="expand_all_charts", use_container_width=True):
+                        st.session_state['charts_expanded'] = True
+                        st.rerun()
+                with btn_col2:
+                    if st.button("▲ Collapse All", key="collapse_all_charts", use_container_width=True):
+                        st.session_state['charts_expanded'] = False
+                        st.rerun()
+                
+                # Get expansion state
+                charts_expanded = st.session_state.get('charts_expanded', False)
+                
+                # Group funds by sub-category
+                funds_by_subcategory = {}
+                for fund_info in fund_info_list:
+                    subcat = fund_info['subcategory']
+                    if subcat not in funds_by_subcategory:
+                        funds_by_subcategory[subcat] = []
+                    funds_by_subcategory[subcat].append(fund_info)
+                
+                # Display by sub-category
+                for subcategory in sorted(funds_by_subcategory.keys()):
+                    # Sub-category header
+                    st.markdown(f"**🏷️ {subcategory}**")
+                    
+                    for fund_info in funds_by_subcategory[subcategory]:
+                        fund_name = fund_info['name']
+                        
+                        if fund_name in fund_metrics_data:
+                            data = fund_metrics_data[fund_name]
+                            
+                            # Get status based on VaR comparison
+                            status = get_status_emoji_charts(data)
+                            
+                            # Create expander for each fund (use expansion state)
+                            with st.expander(f"{status} {fund_name}", expanded=charts_expanded):
+                                # Distribution charts row - 3 charts side by side
+                                chart_cols = st.columns(3)
+                                
+                                for idx, freq in enumerate(['daily', 'weekly', 'monthly']):
+                                    with chart_cols[idx]:
+                                        # Frequency label
+                                        freq_labels = {'daily': 'Daily', 'weekly': 'Weekly (5-day)', 'monthly': 'Monthly (22-day)'}
+                                        st.markdown(f"**{freq_labels[freq]}**")
+                                        
+                                        returns_key = f'{freq}_returns'
+                                        if data.get(returns_key) and data.get(freq):
+                                            latest_ret = data[freq].get('return')
+                                            fig = create_return_distribution_chart(
+                                                data[returns_key],
+                                                data[freq],
+                                                freq,
+                                                latest_ret
+                                            )
+                                            if fig:
+                                                st.plotly_chart(fig, use_container_width=True, key=f"chart_{fund_name}_{freq}")
+                                            else:
+                                                st.info(f"Not enough data")
+                                        else:
+                                            st.info(f"No data available")
+                        else:
+                            with st.expander(f"❓ {fund_name}", expanded=charts_expanded):
+                                st.warning("No data available for this fund")
+                    
+                    st.markdown("")  # Small spacer between categories
+                
+                st.markdown("""
+                **Legend:**
+                - **STATUS**: ‼️ any return ≤ VaR(95) | ✅ any return ≥ VaR(5) | 🆗 all returns within VaR range
+                - **VaR(95)**: 5th percentile (worst 5% threshold) - red dashed line
+                - **CVaR(95)**: Expected shortfall (average of worst 5%) - red dotted line
+                - **VaR(5)**: 95th percentile (best 5% threshold) - green dashed line
+                - **Latest Return**: Current period return shown as point on the KDE curve
+                """)
+            
+            elif frequency_option == "💰 Flows":
+                # ═══════════════════════════════════════════════════════════════
+                # FLOWS TABLE: Fund Flows (AUM & Shareholders)
                 # ═══════════════════════════════════════════════════════════════
                 st.markdown("### 💰 Fund Flows - AUM & Shareholders")
                 
@@ -8214,25 +8492,25 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                         <th colspan="2">MONTHLY</th>
                     </tr>
                     <tr>
-                        <th>ΔTRANSFERS</th>
+                        <th>NNM</th>
                         <th>ΔINVESTORS</th>
-                        <th>ΔTRANSFERS</th>
+                        <th>NNM</th>
                         <th>ΔINVESTORS</th>
-                        <th>ΔTRANSFERS</th>
+                        <th>NNM</th>
                         <th>ΔINVESTORS</th>
                     </tr>
                 """
                 
-                current_category = None
+                current_subcategory = None
                 
                 for fund_info in fund_info_list:
                     fund_name = fund_info['name']
-                    category = fund_info['category']
+                    subcategory = fund_info['subcategory']
                     
-                    # Category separator row
-                    if category != current_category:
-                        html += f'<tr class="category-row"><td colspan="10">{category}</td></tr>'
-                        current_category = category
+                    # Sub-category separator row
+                    if subcategory != current_subcategory:
+                        html += f'<tr class="category-row"><td colspan="10">{subcategory}</td></tr>'
+                        current_subcategory = subcategory
                     
                     if fund_name in fund_flow_data:
                         flow = fund_flow_data[fund_name]
@@ -8339,18 +8617,18 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                     </tr>
                 """
                 
-                current_category = None
+                current_subcategory = None
                 
                 for fund_info in fund_info_list:
                     fund_name = fund_info['name']
-                    category = fund_info['category']
+                    subcategory = fund_info['subcategory']
                     
-                    # Category separator row
-                    if category != current_category:
-                        html += f'<tr class="category-row"><td colspan="7">{category}</td></tr>'
-                        current_category = category
+                    # Sub-category separator row
+                    if subcategory != current_subcategory:
+                        html += f'<tr class="category-row"><td colspan="7">{subcategory}</td></tr>'
+                        current_subcategory = subcategory
                     
-                    if fund_name in fund_metrics_data and fund_metrics_data[fund_name][freq_key]:
+                    if fund_name in fund_metrics_data and fund_metrics_data[fund_name].get(freq_key):
                         data = fund_metrics_data[fund_name][freq_key]
                         
                         cvar_95 = data['cvar_95']
@@ -8365,6 +8643,7 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                         # Get colors based on position between CVaR(95) and CVaR(5)
                         cvar_95_color = get_risk_color(cvar_95, cvar_95, cvar_5)
                         var_95_color = get_risk_color(var_95, cvar_95, cvar_5)
+                        ret_color = get_risk_color(ret, cvar_95, cvar_5)
                         var_5_color = get_risk_color(var_5, cvar_95, cvar_5)
                         cvar_5_color = get_risk_color(cvar_5, cvar_95, cvar_5)
                         
@@ -8373,7 +8652,7 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                             <td>{status}</td>
                             <td style="color: {cvar_95_color};">{format_pct(cvar_95)}</td>
                             <td style="color: {var_95_color};">{format_pct(var_95)}</td>
-                            <td style="color: #FFFFFF;">{format_pct(ret)}</td>
+                            <td style="color: {ret_color};">{format_pct(ret)}</td>
                             <td style="color: {var_5_color};">{format_pct(var_5)}</td>
                             <td style="color: {cvar_5_color};">{format_pct(cvar_5)}</td>
                         </tr>'''
@@ -8397,7 +8676,7 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                 - **STATUS**: ✅ return ≥ VaR(5) (exceptional gains) | 🆗 VaR(95) < return < VaR(5) (normal) | ‼️ return ≤ VaR(95) (exceptional losses)
                 - **CVaR(95)**: Expected loss in worst 5% of returns (reddest)
                 - **VaR(95)**: 5th percentile of returns
-                - **Return**: Most recent {window_desc[freq_key]} return (white)
+                - **Return**: Most recent {window_desc[freq_key]} return (colored by position in range)
                 - **VaR(5)**: 95th percentile of returns
                 - **CVaR(5)**: Expected gain in best 5% of returns (greenest)
                 
@@ -8407,4 +8686,3 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
 
 if __name__ == "__main__":
     main()
-
