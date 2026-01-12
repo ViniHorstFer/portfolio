@@ -4291,13 +4291,14 @@ def main():
 
         # Separate numerical and categorical columns
         numerical_cols = display_df.select_dtypes(include=[np.number]).columns.tolist()
-        categorical_cols = [col for col in all_selected_cols if col not in numerical_cols]
+        # Remove LIQUIDEZ from categorical (keep only LIQUIDEZ_DAYS in numerical)
+        categorical_cols = [col for col in all_selected_cols if col not in numerical_cols and col != 'LIQUIDEZ']
 
-        # Apply filters
+        # Apply numerical filters first
+        active_filters = {}
         with st.expander("📈 Numerical Filters (Min/Max Ranges)", expanded=True):
             if numerical_cols:
                 filter_cols = st.columns(3)
-                active_filters = {}
                 
                 for idx, col in enumerate(numerical_cols):
                     with filter_cols[idx % 3]:
@@ -4348,14 +4349,21 @@ def main():
             else:
                 st.info("No numerical columns selected")
 
+        # Apply numerical filters to get intermediate filtered dataframe
+        num_filtered_df = display_df.copy()
+        for col, (min_val, max_val) in active_filters.items():
+            num_filtered_df = num_filtered_df[(num_filtered_df[col] >= min_val) & (num_filtered_df[col] <= max_val)]
+
+        # Now apply categorical filters with options from numerically filtered data
+        categorical_filters = {}
         with st.expander("📋 Categorical Filters", expanded=False):
             if categorical_cols:
                 cat_filter_cols = st.columns(2)
-                categorical_filters = {}
                 
                 for idx, col in enumerate(categorical_cols):
                     with cat_filter_cols[idx % 2]:
-                        unique_vals = display_df[col].dropna().unique().tolist()
+                        # Get unique values ONLY from the numerically filtered dataframe
+                        unique_vals = sorted(num_filtered_df[col].dropna().unique().tolist())
                         if unique_vals:
                             # Centered categorical filter label
                             st.markdown(f"<h6 style='text-align: center; color: #D4AF37'>{col}</h6>", unsafe_allow_html=True)
@@ -4369,15 +4377,14 @@ def main():
                             
                             if selected_vals != unique_vals:
                                 categorical_filters[col] = selected_vals
+                        else:
+                            st.markdown(f"<h6 style='text-align: center; color: #D4AF37'>{col}</h6>", unsafe_allow_html=True)
+                            st.info(f"No options available")
             else:
                 st.info("No categorical columns selected")
 
         # Apply all filters
-        filtered_df = display_df.copy()
-
-        # Apply numerical filters
-        for col, (min_val, max_val) in active_filters.items():
-            filtered_df = filtered_df[(filtered_df[col] >= min_val) & (filtered_df[col] <= max_val)]
+        filtered_df = num_filtered_df.copy()
 
         # Apply categorical filters
         for col, values in categorical_filters.items():
@@ -5243,6 +5250,57 @@ def main():
                     use_container_width=True,
                     hide_index=True
                 )
+            
+            # Investment Fund Allocation Table
+            st.markdown("#### Investment Fund Allocation")
+            fund_alloc_df = pd.DataFrame({
+                'Investment Fund': list(weights.index) if hasattr(weights, 'index') else list(weights.keys()),
+                'Weight %': [w*100 for w in (weights.values if hasattr(weights, 'values') and callable(getattr(weights, 'values', None)) == False else weights.values())]
+            }).sort_values('Weight %', ascending=False)
+            
+            st.dataframe(
+                fund_alloc_df.style.format({'Weight %': '{:.2f}%'}),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            # Liquidity Breakdown
+            st.markdown("#### Liquidity Breakdown")
+            
+            liquidity_weights = {}
+            total_liquidity_days = 0
+            weights_dict = weights if isinstance(weights, dict) else weights.to_dict()
+            total_weight = sum(weights_dict.values())
+            
+            for fund_name, weight in weights_dict.items():
+                fund_row = fund_metrics[fund_metrics['FUNDO DE INVESTIMENTO'] == fund_name]
+                if len(fund_row) > 0 and 'LIQUIDEZ' in fund_row.columns:
+                    liquidity = fund_row['LIQUIDEZ'].iloc[0]
+                    if pd.notna(liquidity):
+                        norm_weight = weight / total_weight if total_weight > 0 else 0
+                        liquidity_weights[liquidity] = liquidity_weights.get(liquidity, 0) + norm_weight
+                        # Extract days from "D+X" format for average calculation
+                        try:
+                            days = int(str(liquidity).replace('D+', '').strip())
+                            total_liquidity_days += days * norm_weight
+                        except (ValueError, AttributeError):
+                            pass
+            
+            if liquidity_weights:
+                # Sort by liquidity days (extract number from "D+X" format)
+                sorted_liquidity = sorted(liquidity_weights.keys(), 
+                    key=lambda x: int(str(x).replace('D+', '').strip()) if str(x).replace('D+', '').strip().isdigit() else 9999)
+                
+                # Create single-row dataframe with liquidity levels as columns
+                liquidity_row = {liq: f"{liquidity_weights[liq]*100:.2f}%" for liq in sorted_liquidity}
+                liquidity_df = pd.DataFrame([liquidity_row])
+                
+                liq_col1, liq_col2 = st.columns([3, 1])
+                with liq_col1:
+                    st.dataframe(liquidity_df, use_container_width=True, hide_index=True)
+                with liq_col2:
+                    avg_liquidity = round(total_liquidity_days)
+                    st.metric("Average Liquidity", f"{avg_liquidity} days")
             
             st.markdown("---")
             
@@ -6183,6 +6241,19 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
                             hide_index=True
                         )
                     
+                    # Investment Fund Allocation Table
+                    st.markdown("#### Investment Fund Allocation")
+                    fund_alloc_df = pd.DataFrame({
+                        'Investment Fund': list(weights_series.index),
+                        'Weight %': [w*100 for w in weights_series.values]
+                    }).sort_values('Weight %', ascending=False)
+                    
+                    st.dataframe(
+                        fund_alloc_df.style.format({'Weight %': '{:.2f}%'}),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    
                     # Load fund returns
                     fund_returns_dict = {fn: get_fund_returns_by_name(fn, fund_metrics, fund_details) for fn in portfolio.keys()}
                     fund_returns_dict = {k: v for k, v in fund_returns_dict.items() if v is not None}
@@ -6319,6 +6390,45 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
                             monthly_data['Worst Month'] = f"{worst_month*100:.2f}%"
                             
                             st.dataframe(pd.DataFrame([monthly_data]), use_container_width=True, hide_index=True)
+                            
+                            # ═══════════════════════════════════════════════════════════════════
+                            # LIQUIDITY BREAKDOWN
+                            # ═══════════════════════════════════════════════════════════════════
+                            
+                            st.markdown("#### Liquidity Breakdown")
+                            
+                            # Get liquidity for each fund
+                            liquidity_weights = {}
+                            total_liquidity_days = 0
+                            for fund_name, weight in portfolio.items():
+                                fund_row = fund_metrics[fund_metrics['FUNDO DE INVESTIMENTO'] == fund_name]
+                                if len(fund_row) > 0 and 'LIQUIDEZ' in fund_row.columns:
+                                    liquidity = fund_row['LIQUIDEZ'].iloc[0]
+                                    if pd.notna(liquidity):
+                                        norm_weight = weight / total_alloc
+                                        liquidity_weights[liquidity] = liquidity_weights.get(liquidity, 0) + norm_weight
+                                        # Extract days from "D+X" format for average calculation
+                                        try:
+                                            days = int(str(liquidity).replace('D+', '').strip())
+                                            total_liquidity_days += days * norm_weight
+                                        except (ValueError, AttributeError):
+                                            pass
+                            
+                            if liquidity_weights:
+                                # Sort by liquidity days (extract number from "D+X" format)
+                                sorted_liquidity = sorted(liquidity_weights.keys(), 
+                                    key=lambda x: int(str(x).replace('D+', '').strip()) if str(x).replace('D+', '').strip().isdigit() else 9999)
+                                
+                                # Create single-row dataframe with liquidity levels as columns
+                                liquidity_row = {liq: f"{liquidity_weights[liq]*100:.2f}%" for liq in sorted_liquidity}
+                                liquidity_df = pd.DataFrame([liquidity_row])
+                                
+                                liq_col1, liq_col2 = st.columns([3, 1])
+                                with liq_col1:
+                                    st.dataframe(liquidity_df, use_container_width=True, hide_index=True)
+                                with liq_col2:
+                                    avg_liquidity = round(total_liquidity_days)
+                                    st.metric("Average Liquidity", f"{avg_liquidity} days")
                             
                             # ═══════════════════════════════════════════════════════════════════
                             # MONTHLY RETURNS CALENDAR
@@ -7968,6 +8078,21 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
         if 'risk_monitor_temp_funds' not in st.session_state:
             st.session_state['risk_monitor_temp_funds'] = []
         
+        # Pre-load "RiskMonitor" selection from Supabase (only once per session)
+        if 'risk_monitor_preloaded' not in st.session_state:
+            st.session_state['risk_monitor_preloaded'] = True  # Mark as attempted
+            if SUPABASE_AVAILABLE and len(st.session_state['risk_monitor_funds']) == 0:
+                try:
+                    current_user = st.session_state.get('user', 'default')
+                    preloaded = load_risk_monitor_from_supabase("RiskMonitor", current_user)
+                    if preloaded:
+                        # Validate funds exist in current data
+                        valid_funds = [f for f in preloaded if f in fund_metrics['FUNDO DE INVESTIMENTO'].values]
+                        if valid_funds:
+                            st.session_state['risk_monitor_funds'] = valid_funds
+                except Exception:
+                    pass  # Silently fail if pre-load doesn't work
+        
         # Create template for download
         def create_risk_monitor_template():
             """Create a template Excel file for risk monitor upload."""
@@ -8397,14 +8522,36 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                 # ═══════════════════════════════════════════════════════════════
                 st.markdown("### 📈 Return Distribution Charts")
                 
-                # Expand/Collapse buttons
-                btn_col1, btn_col2, spacer = st.columns([1, 1, 6])
-                with btn_col1:
-                    if st.button("▼ Expand All", key="expand_all_charts", use_container_width=True):
+                # Minimalist expand/collapse buttons with smaller styling
+                st.markdown("""
+                <style>
+                .expand-collapse-btn {
+                    display: inline-block;
+                    padding: 4px 12px;
+                    margin-right: 8px;
+                    font-size: 12px;
+                    color: #888;
+                    background: transparent;
+                    border: 1px solid #444;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+                .expand-collapse-btn:hover {
+                    color: #D4AF37;
+                    border-color: #D4AF37;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                # Small toggle buttons
+                toggle_col1, toggle_col2, toggle_spacer = st.columns([0.8, 0.8, 6.4])
+                with toggle_col1:
+                    if st.button("⊕ Expand", key="expand_all_charts", type="secondary"):
                         st.session_state['charts_expanded'] = True
                         st.rerun()
-                with btn_col2:
-                    if st.button("▲ Collapse All", key="collapse_all_charts", use_container_width=True):
+                with toggle_col2:
+                    if st.button("⊖ Collapse", key="collapse_all_charts", type="secondary"):
                         st.session_state['charts_expanded'] = False
                         st.rerun()
                 
