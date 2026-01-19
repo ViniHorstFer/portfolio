@@ -8083,14 +8083,14 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
             st.session_state['risk_monitor_preloaded'] = True  # Mark as attempted
             if SUPABASE_AVAILABLE and len(st.session_state['risk_monitor_funds']) == 0:
                 try:
-                    current_user = st.session_state.get('user', 'default')
+                    current_user = st.session_state.get('username', 'default')
                     preloaded = load_risk_monitor_from_supabase("RiskMonitor", current_user)
                     if preloaded:
                         # Validate funds exist in current data
                         valid_funds = [f for f in preloaded if f in fund_metrics['FUNDO DE INVESTIMENTO'].values]
                         if valid_funds:
                             st.session_state['risk_monitor_funds'] = valid_funds
-                except Exception:
+                except Exception as e:
                     pass  # Silently fail if pre-load doesn't work
         
         # Create template for download
@@ -8304,10 +8304,10 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
         if not st.session_state['risk_monitor_funds']:
             st.info("👆 Select funds above to monitor their risk metrics")
         else:
-            # Frequency selection
+            # View selection
             frequency_option = st.radio(
                 "View:",
-                ["📊 Z-Scores", "📈 Charts", "💰 Flows", "📅 Daily", "📆 Weekly", "🗓️ Monthly"],
+                ["📊 Summary", "📈 Returns", "💰 Flows"],
                 horizontal=True,
                 key="risk_frequency"
             )
@@ -8434,28 +8434,29 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
             # DISPLAY TABLES
             # ═══════════════════════════════════════════════════════════════════
             
-            if frequency_option == "📊 Z-Scores":
+            if frequency_option == "📊 Summary":
                 # ═══════════════════════════════════════════════════════════════
-                # Z-SCORES TABLE: Risk Metrics (Static HTML Table)
+                # SUMMARY TABLE: Returns & NNM%
                 # ═══════════════════════════════════════════════════════════════
-                st.markdown("### 📊 Risk Summary - Returns & Z-Scores")
+                st.markdown("### 📊 Risk Summary - Returns & NNM%")
                 
                 html = table_style + """
                 <table class="risk-table">
                     <tr>
                         <th rowspan="2">INVESTMENT FUND</th>
-                        <th rowspan="2">STATUS</th>
+                        <th rowspan="2">RET</th>
+                        <th rowspan="2">NNM</th>
                         <th colspan="2">DAILY</th>
                         <th colspan="2">WEEKLY</th>
                         <th colspan="2">MONTHLY</th>
                     </tr>
                     <tr>
                         <th>RETURN</th>
-                        <th>STD</th>
+                        <th>NNM%</th>
                         <th>RETURN</th>
-                        <th>STD</th>
+                        <th>NNM%</th>
                         <th>RETURN</th>
-                        <th>STD</th>
+                        <th>NNM%</th>
                     </tr>
                 """
                 
@@ -8467,58 +8468,98 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                     
                     # Sub-category separator row
                     if subcategory != current_subcategory:
-                        html += f'<tr class="category-row"><td colspan="8">{subcategory}</td></tr>'
+                        html += f'<tr class="category-row"><td colspan="9">{subcategory}</td></tr>'
                         current_subcategory = subcategory
                     
-                    if fund_name in fund_metrics_data:
-                        data = fund_metrics_data[fund_name]
-                        
-                        # Collect z-scores for status
-                        z_scores = []
-                        for freq in ['daily', 'weekly', 'monthly']:
-                            if data.get(freq):
-                                z_scores.append(data[freq].get('z_score'))
-                        
-                        status = get_status_emoji_summary(z_scores)
-                        
-                        html += f'<tr><td class="fund-name">{fund_name}</td><td>{status}</td>'
-                        
-                        for freq in ['daily', 'weekly', 'monthly']:
-                            if data.get(freq):
-                                ret = data[freq].get('return')
-                                z = data[freq].get('z_score')
-                                cvar_95 = data[freq].get('cvar_95')
-                                cvar_5 = data[freq].get('cvar_5')
-                                
-                                # Color return based on position in range
-                                ret_color = get_risk_color(ret, cvar_95, cvar_5)
-                                z_color = get_zscore_color(z)
-                                
-                                html += f'<td style="color: {ret_color};">{format_pct(ret)}</td>'
-                                html += f'<td style="color: {z_color}; font-weight: bold;">{format_zscore(z)}</td>'
-                            else:
-                                html += '<td>N/A</td><td>N/A</td>'
-                        
-                        html += '</tr>'
+                    # Get returns data
+                    data = fund_metrics_data.get(fund_name, {})
+                    flow = fund_flow_data.get(fund_name, {})
+                    
+                    # Calculate Returns status (based on VaR comparison)
+                    returns_statuses = []
+                    for freq in ['daily', 'weekly', 'monthly']:
+                        if data.get(freq):
+                            ret = data[freq].get('return')
+                            var_95 = data[freq].get('var_95')
+                            var_5 = data[freq].get('var_5')
+                            if ret is not None and var_95 is not None and var_5 is not None:
+                                if ret <= var_95:
+                                    returns_statuses.append('bad')
+                                elif ret >= var_5:
+                                    returns_statuses.append('good')
+                                else:
+                                    returns_statuses.append('normal')
+                    
+                    if 'bad' in returns_statuses:
+                        returns_status = '‼️'
+                    elif 'good' in returns_statuses:
+                        returns_status = '✅'
+                    elif returns_statuses:
+                        returns_status = '🆗'
                     else:
-                        html += f'<tr><td class="fund-name">{fund_name}</td><td>❓</td>'
-                        html += '<td>N/A</td><td>N/A</td>' * 3
-                        html += '</tr>'
+                        returns_status = '❓'
+                    
+                    # Calculate NNM status (based on flow thresholds)
+                    nnm_statuses = []
+                    thresholds = {'daily': 2.5, 'weekly': 5.0, 'monthly': 7.5}
+                    for freq, threshold in thresholds.items():
+                        nnm_pct = flow.get(f'{freq}_transfers_pct', 0)
+                        if nnm_pct is not None:
+                            if nnm_pct <= -threshold:
+                                nnm_statuses.append('bad')
+                            elif nnm_pct >= threshold:
+                                nnm_statuses.append('good')
+                            else:
+                                nnm_statuses.append('normal')
+                    
+                    if 'bad' in nnm_statuses:
+                        nnm_status = '‼️'
+                    elif 'good' in nnm_statuses:
+                        nnm_status = '✅'
+                    elif nnm_statuses:
+                        nnm_status = '🆗'
+                    else:
+                        nnm_status = '❓'
+                    
+                    html += f'<tr><td class="fund-name">{fund_name}</td><td>{returns_status}</td><td>{nnm_status}</td>'
+                    
+                    for freq in ['daily', 'weekly', 'monthly']:
+                        # Return column
+                        if data.get(freq):
+                            ret = data[freq].get('return')
+                            var_95 = data[freq].get('var_95')
+                            var_5 = data[freq].get('var_5')
+                            ret_color = get_risk_color(ret, var_95, var_5) if ret is not None else '#888888'
+                            html += f'<td style="color: {ret_color};">{format_pct(ret)}</td>'
+                        else:
+                            html += '<td>N/A</td>'
+                        
+                        # NNM% column
+                        nnm_pct = flow.get(f'{freq}_transfers_pct', None)
+                        threshold = thresholds[freq]
+                        if nnm_pct is not None:
+                            nnm_color = get_flow_color(nnm_pct, threshold)
+                            html += f'<td style="color: {nnm_color};">{nnm_pct:+.2f}%</td>'
+                        else:
+                            html += '<td>N/A</td>'
+                    
+                    html += '</tr>'
                 
                 html += '</table>'
                 render_html_table(html)
                 
                 st.markdown("""
                 **Legend:**
-                - **STATUS**: ✅ z ≥ +1.645 (exceptional positive) | 🆗 -1.645 < z < +1.645 (normal) | ‼️ z ≤ -1.645 (exceptional negative)
-                - **RETURN**: Colored from 🔴 CVaR(95) to 🟢 CVaR(5)
-                - **STD**: Z-score of latest rolling window return (bold, green = positive, red = negative)
-                - Rolling windows: Daily (1 day), Weekly (5 days), Monthly (22 days)
+                - **RET (Returns Status)**: ‼️ any return ≤ VaR(95) | ✅ any return ≥ VaR(5) | 🆗 all returns within VaR range
+                - **NNM (Net New Money Status)**: ‼️ any NNM% ≤ -threshold | ✅ any NNM% ≥ +threshold | 🆗 all within thresholds
+                - **Thresholds**: Daily ±2.5% | Weekly ±5.0% | Monthly ±7.5%
+                - **RETURN**: Colored from 🔴 VaR(95) to 🟢 VaR(5)
+                - **NNM%**: Colored from 🔴 negative to 🟢 positive (relative to AUM)
                 """)
             
-            elif frequency_option == "📈 Charts":
+            elif frequency_option == "📈 Returns":
                 # ═══════════════════════════════════════════════════════════════
-                # CHARTS VIEW: Return Distribution Charts
+                # RETURNS VIEW: Return Distribution Charts
                 # ═══════════════════════════════════════════════════════════════
                 st.markdown("### 📈 Return Distribution Charts")
                 
@@ -8545,7 +8586,7 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                 """, unsafe_allow_html=True)
                 
                 # Small toggle buttons
-                toggle_col1, toggle_col2, toggle_spacer = st.columns([0.8, 0.8, 6.4])
+                toggle_col1, toggle_col2, toggle_spacer = st.columns([0.8, 0.8, 4])
                 with toggle_col1:
                     if st.button("⊕ Expand", key="expand_all_charts", type="secondary"):
                         st.session_state['charts_expanded'] = True
@@ -8729,106 +8770,6 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                 
                 html += '</table>'
                 render_html_table(html)
-                
-            else:
-                # ═══════════════════════════════════════════════════════════════
-                # INDIVIDUAL FREQUENCY TABLES (Daily, Weekly, Monthly)
-                # ═══════════════════════════════════════════════════════════════
-                freq_map = {
-                    "📅 Daily": "daily",
-                    "📆 Weekly": "weekly", 
-                    "🗓️ Monthly": "monthly"
-                }
-                freq_key = freq_map[frequency_option]
-                freq_title = frequency_option.split(" ")[1]
-                
-                # Window description
-                window_desc = {
-                    "daily": "1 day",
-                    "weekly": "5-day rolling window",
-                    "monthly": "22-day rolling window"
-                }
-                
-                st.markdown(f"### {frequency_option} Risk Metrics ({window_desc[freq_key]})")
-                
-                html = table_style + """
-                <table class="risk-table">
-                    <tr>
-                        <th>INVESTMENT FUND</th>
-                        <th>STATUS</th>
-                        <th>CVaR(95)</th>
-                        <th>VaR(95)</th>
-                        <th>RETURN</th>
-                        <th>VaR(5)</th>
-                        <th>CVaR(5)</th>
-                    </tr>
-                """
-                
-                current_subcategory = None
-                
-                for fund_info in fund_info_list:
-                    fund_name = fund_info['name']
-                    subcategory = fund_info['subcategory']
-                    
-                    # Sub-category separator row
-                    if subcategory != current_subcategory:
-                        html += f'<tr class="category-row"><td colspan="7">{subcategory}</td></tr>'
-                        current_subcategory = subcategory
-                    
-                    if fund_name in fund_metrics_data and fund_metrics_data[fund_name].get(freq_key):
-                        data = fund_metrics_data[fund_name][freq_key]
-                        
-                        cvar_95 = data['cvar_95']
-                        var_95 = data['var_95']
-                        ret = data['return']
-                        var_5 = data['var_5']
-                        cvar_5 = data['cvar_5']
-                        
-                        # Get status based on return vs VaR
-                        status = get_status_emoji_risk(ret, var_95, var_5)
-                        
-                        # Get colors based on position between CVaR(95) and CVaR(5)
-                        cvar_95_color = get_risk_color(cvar_95, cvar_95, cvar_5)
-                        var_95_color = get_risk_color(var_95, cvar_95, cvar_5)
-                        ret_color = get_risk_color(ret, cvar_95, cvar_5)
-                        var_5_color = get_risk_color(var_5, cvar_95, cvar_5)
-                        cvar_5_color = get_risk_color(cvar_5, cvar_95, cvar_5)
-                        
-                        html += f'''<tr>
-                            <td class="fund-name">{fund_name}</td>
-                            <td>{status}</td>
-                            <td style="color: {cvar_95_color};">{format_pct(cvar_95)}</td>
-                            <td style="color: {var_95_color};">{format_pct(var_95)}</td>
-                            <td style="color: {ret_color};">{format_pct(ret)}</td>
-                            <td style="color: {var_5_color};">{format_pct(var_5)}</td>
-                            <td style="color: {cvar_5_color};">{format_pct(cvar_5)}</td>
-                        </tr>'''
-                    else:
-                        html += f'''<tr>
-                            <td class="fund-name">{fund_name}</td>
-                            <td>❓</td>
-                            <td style="color: #888;">N/A</td>
-                            <td style="color: #888;">N/A</td>
-                            <td style="color: #888;">N/A</td>
-                            <td style="color: #888;">N/A</td>
-                            <td style="color: #888;">N/A</td>
-                        </tr>'''
-                
-                html += '</table>'
-                render_html_table(html)
-                
-                st.markdown("---")
-                st.markdown(f"""
-                **{freq_title} Metrics ({window_desc[freq_key]}):**
-                - **STATUS**: ✅ return ≥ VaR(5) (exceptional gains) | 🆗 VaR(95) < return < VaR(5) (normal) | ‼️ return ≤ VaR(95) (exceptional losses)
-                - **CVaR(95)**: Expected loss in worst 5% of returns (reddest)
-                - **VaR(95)**: 5th percentile of returns
-                - **Return**: Most recent {window_desc[freq_key]} return (colored by position in range)
-                - **VaR(5)**: 95th percentile of returns
-                - **CVaR(5)**: Expected gain in best 5% of returns (greenest)
-                
-                *Color gradient: 🔴 CVaR(95) → ⚪ Zero → 🟢 CVaR(5)*
-                """)
 
 
 if __name__ == "__main__":
