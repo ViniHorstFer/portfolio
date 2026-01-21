@@ -379,7 +379,7 @@ def load_fund_metrics_from_github() -> Optional[pd.DataFrame]:
     
     # Try .pkl.zip if xlsx not found
     if download_url is None:
-        file_name = 'fund_metrics.pkl.zip'
+        file_name = 'fund_metrics.zip'
         download_url = get_asset_download_url(release, file_name)
         is_zipped = True
     
@@ -394,7 +394,7 @@ def load_fund_metrics_from_github() -> Optional[pd.DataFrame]:
         return None
     
     with st.spinner("Loading fund metrics from GitHub..."):
-        if file_name.endswith('.pkl.zip'):
+        if file_name.endswith('.zip'):
             df = load_pickle_from_github(download_url, is_zipped=True)
         elif file_name.endswith('.pkl'):
             df = load_pickle_from_github(download_url, is_zipped=False)
@@ -417,8 +417,8 @@ def load_fund_details_from_github() -> Optional[Any]:
     if release is None:
         return None
     
-    # Try .pkl.zip first (compressed format for GitHub compatibility)
-    file_name = RELEASE_FILE_NAMES['funds_info']  # funds_info.pkl.zip
+    # Try .zip first (compressed format for GitHub compatibility)
+    file_name = RELEASE_FILE_NAMES['funds_info']  # funds_info.zip
     download_url = get_asset_download_url(release, file_name)
     is_zipped = True
     
@@ -429,7 +429,7 @@ def load_fund_details_from_github() -> Optional[Any]:
         is_zipped = False
     
     if download_url is None:
-        st.warning(f"File not found in release: funds_info.pkl.zip or funds_info.pkl")
+        st.warning(f"File not found in release: funds_info.zip or funds_info.pkl")
         return None
     
     with st.spinner("Loading fund details from GitHub..."):
@@ -457,7 +457,7 @@ def load_benchmarks_from_github() -> Optional[pd.DataFrame]:
     
     # Try .pkl.zip if xlsx not found
     if download_url is None:
-        file_name = 'benchmarks_data.pkl.zip'
+        file_name = 'benchmarks_data.zip'
         download_url = get_asset_download_url(release, file_name)
     
     # Try .pkl if .pkl.zip not found
@@ -466,11 +466,11 @@ def load_benchmarks_from_github() -> Optional[pd.DataFrame]:
         download_url = get_asset_download_url(release, file_name)
     
     if download_url is None:
-        st.warning(f"File not found in release: benchmarks_data.xlsx, .pkl.zip, or .pkl")
+        st.warning(f"File not found in release: benchmarks_data.xlsx, .zip, or .pkl")
         return None
     
     with st.spinner("Loading benchmarks from GitHub..."):
-        if file_name.endswith('.pkl.zip'):
+        if file_name.endswith('.zip'):
             df = load_pickle_from_github(download_url, is_zipped=True)
         elif file_name.endswith('.pkl'):
             df = load_pickle_from_github(download_url, is_zipped=False)
@@ -571,7 +571,7 @@ def upload_fund_metrics(uploaded_file) -> bool:
             # Compress pkl to zip for GitHub compatibility
             st.info("Compressing pkl file for GitHub compatibility...")
             content = compress_pkl_to_zip(content, original_name)
-            file_name = 'fund_metrics.pkl.zip'
+            file_name = 'fund_metrics.zip'
             content_type = 'application/zip'
         else:
             file_name = 'fund_metrics.xlsx'
@@ -612,7 +612,7 @@ def upload_fund_details(uploaded_file) -> bool:
         st.info("Compressing pkl file for GitHub compatibility...")
         zip_content = compress_pkl_to_zip(content, original_name)
         
-        file_name = 'funds_info.pkl.zip'
+        file_name = 'funds_info.zip'
         content_type = 'application/zip'
         
         release = get_or_create_release()
@@ -645,7 +645,7 @@ def upload_benchmarks(uploaded_file) -> bool:
             # Compress pkl to zip for GitHub compatibility
             st.info("Compressing pkl file for GitHub compatibility...")
             content = compress_pkl_to_zip(content, original_name)
-            file_name = 'benchmarks_data.pkl.zip'
+            file_name = 'benchmarks_data.zip'
             content_type = 'application/zip'
         else:
             file_name = 'benchmarks_data.xlsx'
