@@ -46,7 +46,7 @@ from typing import Optional, Any, Dict, List, Tuple
 # Expected file names in the release (pkl files stored as .zip)
 RELEASE_FILE_NAMES = {
     'fund_metrics': 'fund_metrics.xlsx',
-    'funds_info': 'funds_info.pkl.zip',      # pkl compressed as zip
+    'funds_info': 'funds_info.zip',      # pkl compressed as zip
     'benchmarks': 'benchmarks_data.xlsx',
 }
 
