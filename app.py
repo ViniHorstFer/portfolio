@@ -366,7 +366,7 @@ def login_page():
             max-width: 200px;
             margin: 30px auto; /* reduced top margin */
             padding: 40px;
-            background-image: url('https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeifeiozijmed7elphjdpu5jp5uj75v5l2g54opzrq2vxtjf6ebirpa');
+            background-image: url('https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeigayrnnsuwglzkbhikm32ksvucxecuorcj4k36l4de7na6wcdpjsa');
             background-size: contain;
             background-position: center;
             background-repeat: no-repeat;
@@ -3000,7 +3000,7 @@ def main():
 
     # Sidebar - Data Source Selection
     with st.sidebar:
-        st.image("https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeifeiozijmed7elphjdpu5jp5uj75v5l2g54opzrq2vxtjf6ebirpa", 
+        st.image("https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeigayrnnsuwglzkbhikm32ksvucxecuorcj4k36l4de7na6wcdpjsa", 
                 use_container_width=True)
         st.markdown("---")
         
@@ -8774,5 +8774,6 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
 
 if __name__ == "__main__":
     main()
+
 
 
