@@ -60,7 +60,10 @@ from github_releases import (
     load_fund_metrics_from_github,
     load_fund_details_from_github,
     load_benchmarks_from_github,
+    load_assets_metrics_from_github,
+    load_assets_prices_from_github,
     render_github_data_panel,
+    render_github_assets_panel,
     clear_github_cache
 )
 
@@ -2997,8 +3000,21 @@ def display_dro_results_v2(result, all_returns_df, cdi_returns, fund_categories,
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=3600)
-def load_etf_metrics(file_path=None):
-    """Load ETF metrics from Excel."""
+def load_etf_metrics(file_path=None, uploaded_file=None, from_github=False):
+    """Load ETF metrics from Excel or GitHub Release."""
+    # Priority: uploaded_file > GitHub > file_path
+    if uploaded_file is not None:
+        try:
+            df = pd.read_excel(uploaded_file, index_col=0)
+            return df
+        except Exception as e:
+            st.error(f"Error loading uploaded ETF metrics: {e}")
+            return None
+    
+    if from_github:
+        return load_assets_metrics_from_github()
+    
+    # Fallback to local file
     path = file_path or DEFAULT_ETF_METRICS_PATH
     try:
         return pd.read_excel(path, index_col=0)
@@ -3007,12 +3023,38 @@ def load_etf_metrics(file_path=None):
         return None
 
 @st.cache_data(ttl=3600)
-def load_etf_prices(file_path=None):
-    """Load ETF prices from Excel."""
+def load_etf_prices(file_path=None, uploaded_file=None, from_github=False):
+    """Load ETF prices from pickle (zip on GitHub) or Excel."""
+    # Priority: uploaded_file > GitHub > file_path
+    if uploaded_file is not None:
+        try:
+            # Check if it's a pickle file
+            if hasattr(uploaded_file, 'name') and uploaded_file.name.endswith('.pkl'):
+                df = joblib.load(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file, index_col=0)
+            
+            if not isinstance(df.index, pd.DatetimeIndex):
+                df.index = pd.to_datetime(df.index)
+            return df
+        except Exception as e:
+            st.error(f"Error loading uploaded ETF prices: {e}")
+            return None
+    
+    if from_github:
+        return load_assets_prices_from_github()
+    
+    # Fallback to local file
     path = file_path or DEFAULT_ETF_PRICES_PATH
     try:
-        df = pd.read_excel(path, index_col=0)
-        df.index = pd.to_datetime(df.index)
+        # Try pickle first, then Excel
+        if path.endswith('.pkl'):
+            df = joblib.load(path)
+        else:
+            df = pd.read_excel(path, index_col=0)
+        
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
         return df
     except Exception as e:
         st.error(f"Error loading ETF prices: {e}")
@@ -3032,13 +3074,109 @@ def run_etf_system():
     st.markdown("### Professional ETF Analysis - VOO Benchmark")
     st.markdown("---")
     
-    # Load data
-    metrics_df = load_etf_metrics()
-    prices_df = load_etf_prices()
+    # ═══════════════════════════════════════════════════════════════
+    # DATA SOURCE SELECTION (in sidebar)
+    # ═══════════════════════════════════════════════════════════════
+    with st.sidebar:
+        st.markdown("---")
+        st.header("📁 ETF Data Source")
+        
+        # Check if user can upload
+        current_username = st.session_state.get('username', 'admin')
+        user_can_upload = can_user_upload(current_username)
+        
+        # Determine default data source
+        default_source_index = 0  # GitHub Releases
+        if not is_github_configured():
+            if os.path.exists(DEFAULT_ETF_METRICS_PATH) or os.path.exists(DEFAULT_ETF_PRICES_PATH):
+                default_source_index = 1  # Local Files
+            else:
+                default_source_index = 2 if user_can_upload else 0
+        
+        # Data source options
+        if user_can_upload:
+            etf_data_source_options = ['📦 GitHub Releases', '📂 Local Files', '📤 Upload']
+        else:
+            etf_data_source_options = ['📦 GitHub Releases', '📂 Local Files']
+            if default_source_index == 2:
+                default_source_index = 0
+        
+        etf_data_source = st.radio(
+            "Load ETF data from:",
+            options=etf_data_source_options,
+            index=min(default_source_index, len(etf_data_source_options) - 1),
+            key='etf_data_source_radio',
+            help="GitHub: Cloud storage via releases | Local: Load from disk" + (" | Upload: Upload files manually" if user_can_upload else "")
+        )
+        
+        # Initialize variables
+        uploaded_etf_metrics = None
+        uploaded_etf_prices = None
+        metrics_df = None
+        prices_df = None
+        
+        if etf_data_source == '📦 GitHub Releases':
+            # Use GitHub panel for assets
+            metrics_df, prices_df = render_github_assets_panel(show_upload=user_can_upload)
+            
+        elif etf_data_source == '📂 Local Files':
+            st.info("📂 Using local files...")
+            files_found = []
+            if os.path.exists(DEFAULT_ETF_METRICS_PATH):
+                files_found.append(f"✓ {DEFAULT_ETF_METRICS_PATH.split('/')[-1]}")
+            if os.path.exists(DEFAULT_ETF_PRICES_PATH):
+                files_found.append(f"✓ {DEFAULT_ETF_PRICES_PATH.split('/')[-1]}")
+            
+            if files_found:
+                for f in files_found:
+                    st.success(f)
+            else:
+                st.warning("No local ETF files found")
+            
+            # Load from local paths
+            metrics_df = load_etf_metrics(
+                file_path=DEFAULT_ETF_METRICS_PATH if os.path.exists(DEFAULT_ETF_METRICS_PATH) else None,
+                from_github=False
+            )
+            prices_df = load_etf_prices(
+                file_path=DEFAULT_ETF_PRICES_PATH if os.path.exists(DEFAULT_ETF_PRICES_PATH) else None,
+                from_github=False
+            )
+            
+        else:  # Upload
+            uploaded_etf_metrics = st.file_uploader(
+                "ETF Metrics (xlsx)",
+                type=['xlsx'],
+                key='upload_etf_metrics',
+                help="Upload assets_metrics.xlsx"
+            )
+            uploaded_etf_prices = st.file_uploader(
+                "ETF Prices (pkl)",
+                type=['pkl'],
+                key='upload_etf_prices',
+                help="Upload assets_prices.pkl"
+            )
+            
+            # Load from uploaded files
+            if uploaded_etf_metrics:
+                metrics_df = load_etf_metrics(uploaded_file=uploaded_etf_metrics)
+            if uploaded_etf_prices:
+                prices_df = load_etf_prices(uploaded_file=uploaded_etf_prices)
+        
+        st.markdown("---")
     
+    # Check if data loaded
     if metrics_df is None or prices_df is None:
         st.error("❌ Failed to load ETF data")
-        st.info("Ensure etf_metrics.xlsx and etf_prices.xlsx are in Sheets/ folder")
+        if etf_data_source == '📦 GitHub Releases':
+            if not is_github_configured():
+                st.info("💡 Configure GitHub Releases in the sidebar to use cloud storage")
+            else:
+                st.info("💡 Upload assets_metrics.xlsx and assets_prices.pkl to the release")
+        elif etf_data_source == '📂 Local Files':
+            st.info("💡 Ensure assets_metrics.xlsx and assets_prices.pkl are in Sheets/ folder")
+        else:
+            st.info("💡 Upload both assets_metrics.xlsx and assets_prices.pkl files")
         return
     
     benchmarks = prepare_etf_benchmark_data(prices_df)
