@@ -1,6 +1,6 @@
 """
 ═══════════════════════════════════════════════════════════════════════════════
-PROFESSIONAL FUND ANALYTICS PLATFORM
+PROFESSIONAL FUND & ETF ANALYTICS PLATFORM
 Black & Gold Theme - Bloomberg Style
 Built with Streamlit + Plotly
 
@@ -102,6 +102,10 @@ def get_data_path(base_name, extensions=['pkl', 'xlsx']):
 DEFAULT_METRICS_PATH = get_data_path('fund_metrics') or "Sheets/fund_metrics.xlsx"
 DEFAULT_DETAILS_PATH = get_data_path('funds_info', ['pkl']) or "Sheets/funds_info.pkl"
 DEFAULT_BENCHMARKS_PATH = get_data_path('benchmarks_data') or "Sheets/benchmarks_data.xlsx"
+# ETF data paths  
+DEFAULT_ETF_METRICS_PATH = get_data_path('etf_metrics') or "Sheets/assets_metrics.xlsx"
+DEFAULT_ETF_PRICES_PATH = get_data_path('etf_prices') or "Sheets/assets_prices.xlsx"
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SUPABASE CONFIGURATION
@@ -2986,6 +2990,3072 @@ def display_dro_results_v2(result, all_returns_df, cdi_returns, fund_categories,
     st.session_state['fund_subcategories'] = fund_subcategories
 
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ETF SYSTEM FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@st.cache_data(ttl=3600)
+def load_etf_metrics(file_path=None):
+    """Load ETF metrics from Excel."""
+    path = file_path or DEFAULT_ETF_METRICS_PATH
+    try:
+        return pd.read_excel(path, index_col=0)
+    except Exception as e:
+        st.error(f"Error loading ETF metrics: {e}")
+        return None
+
+@st.cache_data(ttl=3600)
+def load_etf_prices(file_path=None):
+    """Load ETF prices from Excel."""
+    path = file_path or DEFAULT_ETF_PRICES_PATH
+    try:
+        df = pd.read_excel(path, index_col=0)
+        df.index = pd.to_datetime(df.index)
+        return df
+    except Exception as e:
+        st.error(f"Error loading ETF prices: {e}")
+        return None
+
+def prepare_etf_benchmark_data(prices_df):
+    """Prepare VOO benchmark for ETF system."""
+    if 'VOO' not in prices_df.columns:
+        st.error("VOO benchmark not found")
+        return None
+    voo = prices_df['VOO'].dropna().pct_change().dropna()
+    return pd.DataFrame({'VOO': voo})
+
+def run_etf_system():
+    """Run the complete ETF analysis system."""
+    st.title("📊 ETF ANALYTICS PLATFORM")
+    st.markdown("### Professional ETF Analysis - VOO Benchmark")
+    st.markdown("---")
+    
+    # Load data
+    metrics_df = load_etf_metrics()
+    prices_df = load_etf_prices()
+    
+    if metrics_df is None or prices_df is None:
+        st.error("❌ Failed to load ETF data")
+        st.info("Ensure etf_metrics.xlsx and etf_prices.xlsx are in Sheets/ folder")
+        return
+    
+    benchmarks = prepare_etf_benchmark_data(prices_df)
+    if benchmarks is None:
+        return
+    
+    # Create tabs
+    tabs = st.tabs([
+        "📋 ETF DATABASE",
+        "📊 DETAILED ANALYSIS",
+        "⚖️ ADVANCED COMPARISON",
+        "🎯 PORTFOLIO CONSTRUCTION",
+        "💼 RECOMMENDED PORTFOLIO",
+        "🚨 RISK MONITOR"
+    ])
+    
+    # Securities Database
+    with tabs[0]:
+        st.title("📋 ETF DATABASE")
+        st.markdown("---")
+        cols = ['Name', 'Class', 'Category']
+        display_cols = [c for c in cols if c in metrics_df.columns]
+        if display_cols:
+            st.dataframe(metrics_df[display_cols], use_container_width=True, height=600)
+    
+    # ═══════════════════════════════════════════════════════════════
+    # TAB 2: DETAILED ANALYSIS
+    # ═══════════════════════════════════════════════════════════════
+    
+    with tabs[1]:
+        st.title("📊 DETAILED ETF ANALYSIS")
+        st.markdown("---")
+        
+        # ETF selection dropdown
+        etf_tickers = metrics_df.index.tolist()
+        etf_names = metrics_df['Name'].tolist()
+        etf_display = [f"{ticker} - {name}" for ticker, name in zip(etf_tickers, etf_names)]
+        etf_mapping = dict(zip(etf_display, etf_tickers))
+        
+        selected_etf_display = st.selectbox(
+            "Select an ETF to analyze:",
+            options=etf_display,
+            key="etf_selector_detail"
+        )
+        
+        selected_etf_ticker = etf_mapping[selected_etf_display]
+        etf_info = metrics_df.loc[selected_etf_ticker]
+        etf_name = etf_info['Name']
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # ETF INFORMATION SECTION
+        # ═══════════════════════════════════════════════════════════════════
+        
+        st.markdown("### 📋 Security Information")
+        
+        # Create info display in columns (matching Investment Funds layout)
+        info_col1, info_col2, info_col3, info_col4 = st.columns(4)
+        
+        with info_col1:
+            st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px;'>TICKER</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{selected_etf_ticker}</p>", unsafe_allow_html=True)
+        
+        with info_col2:    
+            st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>NAME</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{etf_info.get('Name', 'N/A')}</p>", unsafe_allow_html=True)
+            
+        with info_col3:
+            st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px;'>CLASS</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{etf_info.get('Class', 'N/A')}</p>", unsafe_allow_html=True)
+
+        with info_col4:    
+            st.markdown("<p style='color: #FFD700; font-weight: 700; font-size: 13px; margin-bottom: 2px; margin-top: 15px;'>CATEGORY</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='color: #FFFFFF; font-size: 13px; margin-top: 0px;'>{etf_info.get('Category', 'N/A')}</p>", unsafe_allow_html=True)
+            
+        st.markdown("---")
+        
+        # Get ETF price data
+        if selected_etf_ticker not in prices_df.columns:
+            st.error(f"Price data not available for {selected_etf_ticker}")
+        else:
+            etf_prices = prices_df[selected_etf_ticker].dropna()
+            etf_returns = etf_prices.pct_change().dropna()
+            
+            # Get VOO benchmark
+            voo_prices = prices_df['VOO'].dropna()
+            voo_returns = voo_prices.pct_change().dropna()
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # RETURNS ANALYSIS SECTION
+            # ═══════════════════════════════════════════════════════════════════
+            
+            st.markdown("### 📈 Returns Analysis")
+            
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                period_map = {'3M': 3, '6M': 6, '12M': 12, '24M': 24, '36M': 36, 'All': None}
+                period_list = list(period_map.keys())
+                default_period_idx = period_list.index('All')
+                selected_period = st.selectbox("Select Period:", period_list, index=default_period_idx)
+            
+            with col2:
+                # VOO is the only benchmark
+                selected_benchmarks = ['VOO']
+            
+            # Filter returns based on period
+            if selected_period != 'All':
+                months = period_map[selected_period]
+                cutoff_date = etf_returns.index[-1] - pd.DateOffset(months=months)
+                etf_returns_filtered = etf_returns[etf_returns.index >= cutoff_date]
+                voo_returns_filtered = voo_returns[voo_returns.index >= cutoff_date]
+            else:
+                etf_returns_filtered = etf_returns
+                voo_returns_filtered = voo_returns
+            
+            # Align the series
+            common_idx = etf_returns_filtered.index.intersection(voo_returns_filtered.index)
+            etf_returns_aligned = etf_returns_filtered.loc[common_idx]
+            voo_returns_aligned = voo_returns_filtered.loc[common_idx]
+            
+            # Calculate cumulative returns
+            etf_cum = (1 + etf_returns_aligned).cumprod()
+            voo_cum = (1 + voo_returns_aligned).cumprod()
+            
+            # Downsample for large datasets
+            if len(etf_cum) > 5000:
+                etf_cum_ds = downsample_for_chart(etf_cum, max_points=5000)
+                voo_cum_ds = downsample_for_chart(voo_cum, max_points=5000)
+            else:
+                etf_cum_ds = etf_cum
+                voo_cum_ds = voo_cum
+            
+            # Create cumulative returns chart
+            fig = go.Figure()
+            
+            fig.add_trace(go.Scatter(
+                x=etf_cum_ds.index,
+                y=(etf_cum_ds - 1) * 100,
+                name=etf_name,
+                line=dict(color='#D4AF37', width=2),
+                hovertemplate='%{y:.2f}%<extra></extra>'
+            ))
+            
+            fig.add_trace(go.Scatter(
+                x=voo_cum_ds.index,
+                y=(voo_cum_ds - 1) * 100,
+                name='VOO (Benchmark)',
+                line=dict(color='#00CED1', width=2),
+                hovertemplate='%{y:.2f}%<extra></extra>'
+            ))
+            
+            fig.update_layout(
+                title=f"Cumulative Returns - {selected_period}",
+                xaxis_title="Date",
+                yaxis_title="Cumulative Return (%)",
+                template=PLOTLY_TEMPLATE,
+                hovermode='x unified',
+                height=450,
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                )
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.markdown("---")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # MONTHLY RETURNS CALENDAR
+            # ═══════════════════════════════════════════════════════════════════
+
+            st.markdown("#### Monthly Returns Calendar")
+            
+            # Benchmark and comparison method selection
+            cal_col1, cal_col2 = st.columns([1, 1])
+            
+            with cal_col1:
+                selected_calendar_benchmark = st.selectbox(
+                    "Select Benchmark for Comparison:",
+                    options=['VOO'],
+                    index=0,
+                    key="etf_calendar_benchmark"
+                )
+            
+            with cal_col2:
+                comparison_method = st.selectbox(
+                    "Comparison Method:",
+                    options=['Relative Performance', 'Percentage Points', 'Benchmark Performance'],
+                    index=0,
+                    key="etf_comparison_method"
+                )
+            
+            # Create monthly returns table
+            voo_benchmark = benchmarks['VOO']
+            monthly_table = create_monthly_returns_table(
+                etf_returns,
+                voo_benchmark,
+                comparison_method
+            )
+            
+            # Style the table as HTML
+            styled_html = style_monthly_returns_table(monthly_table, comparison_method)
+            
+            # Display HTML table
+            st.markdown(styled_html, unsafe_allow_html=True)
+            
+            # Add explanation
+            with st.expander("ℹ️ Understanding the Monthly Returns Calendar"):
+                explanation_text = f"""
+                **How to read this table:**
+                
+                For each year, {"two" if comparison_method == "Benchmark Performance" else "three"} rows are displayed:
+                - **ETF**: Monthly returns of the ETF
+                """
+                
+                if comparison_method == 'Relative Performance':
+                    explanation_text += """
+                - **Benchmark**: Monthly returns of VOO benchmark
+                - **Relative**: ETF return divided by benchmark return (e.g., 1.5x means ETF returned 50% more)
+                
+                **Color coding:**
+                - 🟩 Green: Relative performance > 1.0 (ETF outperformed)
+                - 🟥 Red: Relative performance < 1.0 (ETF underperformed)
+                """
+                elif comparison_method == 'Percentage Points':
+                    explanation_text += """
+                - **Benchmark**: Monthly returns of VOO benchmark
+                - **Difference**: ETF return minus benchmark return in percentage points
+                
+                **Color coding:**
+                - 🟩 Green: Positive difference (ETF outperformed)
+                - 🟥 Red: Negative difference (ETF underperformed)
+                """
+                else:  # Benchmark Performance
+                    explanation_text += """
+                
+                **Color coding:**
+                - Shows only VOO benchmark monthly returns
+                - 🟩 Green: Positive returns
+                - 🟥 Red: Negative returns
+                """
+                
+                st.markdown(explanation_text)
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # RISK-ADJUSTED PERFORMANCE
+            # ═══════════════════════════════════════════════════════════════════
+            
+            st.markdown("---")
+            st.markdown("### 📊 Risk-Adjusted Performance")
+            
+            # Frequency selector
+            freq_col1, freq_col2, freq_col3 = st.columns([1, 1, 1])
+            with freq_col2:
+                frequency_choice = st.radio(
+                    "Data Frequency Selection:",
+                    options=['Daily', 'Weekly', 'Monthly'],
+                    index=0,
+                    horizontal=True,
+                    key='etf_detail_freq'
+                )
+            
+            freq_suffix = {'Daily': 'D', 'Weekly': 'W', 'Monthly': 'M'}[frequency_choice]
+            freq_label = {'Daily': 'daily', 'Weekly': 'weekly', 'Monthly': 'monthly'}[frequency_choice]
+            
+            # Get returns data for selected frequency
+            if frequency_choice == 'Daily':
+                returns_data = etf_returns
+            elif frequency_choice == 'Weekly':
+                returns_data = etf_prices.resample('W').last().pct_change().dropna()
+            else:  # Monthly
+                returns_data = etf_prices.resample('M').last().pct_change().dropna()
+            
+            # Omega Ratio Section
+            st.markdown("#### Omega Ratio")
+            
+            omega_chart_col, omega_gauge_col = st.columns([2, 1])
+            
+            with omega_chart_col:
+                # Omega CDF chart
+                fig_omega = create_omega_cdf_chart(returns_data, threshold=0, frequency=freq_label)
+                st.plotly_chart(fig_omega, use_container_width=True)
+            
+            with omega_gauge_col:
+                # Omega gauge with selected frequency
+                omega_val = etf_info.get(f'Omega_{freq_suffix}', np.nan)
+                if pd.notna(omega_val) and not np.isinf(omega_val):
+                    fig_omega_gauge = create_omega_gauge(omega_val, frequency=frequency_choice)
+                    st.plotly_chart(fig_omega_gauge, use_container_width=True)
+                else:
+                    st.metric(f"Omega Ratio ({frequency_choice})", "N/A")
+            
+            st.markdown("---")
+            
+            # Rachev Ratio & Tail Risk Section
+            st.markdown("#### Rachev Ratio & Tail Risk")
+            
+            rachev_chart_col, rachev_metrics_col = st.columns([2, 1])
+            
+            with rachev_chart_col:
+                # Combined chart with selected frequency
+                var_val = etf_info.get(f'VaR(95)_{freq_suffix}', np.nan)
+                cvar_val = etf_info.get(f'CVaR(95)_{freq_suffix}', np.nan)
+                
+                fig_rachev = create_combined_rachev_var_chart(
+                    returns_data, var_val, cvar_val, frequency=freq_label
+                )
+                st.plotly_chart(fig_rachev, use_container_width=True)
+            
+            with rachev_metrics_col:
+                # Rachev gauge with selected frequency
+                rachev_val = etf_info.get(f'Rachev_{freq_suffix}', np.nan)
+                if pd.notna(rachev_val) and not np.isinf(rachev_val):
+                    fig_rachev_gauge = create_rachev_gauge(rachev_val, frequency=frequency_choice)
+                    st.plotly_chart(fig_rachev_gauge, use_container_width=True)
+                else:
+                    st.metric(f"Rachev Ratio ({frequency_choice})", "N/A")
+            
+            # Understanding guide
+            with st.expander("📚 Understanding Omega & Rachev Ratios"):
+                st.markdown("""
+                ### Omega Ratio
+                
+                **What it measures:** Probability-weighted ratio of gains vs losses above/below a threshold (usually 0%).
+                
+                **Interpretation:**
+                - **Ω < 1.0**: Poor - Losses exceed gains
+                - **Ω 1.0-1.5**: Below average
+                - **Ω 1.5-2.0**: Average/Good
+                - **Ω 2.0-3.0**: Very good
+                - **Ω > 3.0**: Excellent
+                - **Higher is better**
+                
+                ---
+                
+                ### Rachev Ratio (5% Tails)
+                
+                **What it measures:** Expected loss in worst 5% scenarios vs expected gain in best 5% scenarios.
+                
+                **Interpretation:**
+                - **R < 0.5**: Excellent - Very asymmetric (small losses, large gains)
+                - **R 0.5-0.75**: Very good
+                - **R 0.75-1.0**: Good/Average (symmetric risk)
+                - **R 1.0-1.5**: Below average
+                - **R > 1.5**: Poor - High tail risk
+                - **Lower is better**
+                
+                ---
+                
+                ### VaR & CVaR
+                
+                **VaR 95%**: Maximum loss expected 95% of the time (5% worst case threshold)
+                
+                **CVaR 95%**: Average loss in the worst 5% of cases (expected shortfall)
+                """)
+            
+            st.markdown("---")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # RISK METRICS DASHBOARD
+            # ═══════════════════════════════════════════════════════════════════
+
+            st.markdown("### 🎯 Risk Metrics Dashboard")
+            
+            # Volatility section
+            st.markdown("#### Volatility Analysis")
+            
+            vol_chart_col, vol_metrics_col = st.columns([3, 1])
+            
+            with vol_chart_col:
+                # Rolling volatility chart
+                fig_vol = create_rolling_vol_chart(etf_returns, window_months=12)
+                st.plotly_chart(fig_vol, use_container_width=True)
+            
+            with vol_metrics_col:
+                # Calculate volatility for different periods
+                vol_12m = etf_returns.tail(252).std() * np.sqrt(252) if len(etf_returns) >= 252 else np.nan
+                st.metric("Vol 12M", f"{vol_12m*100:.2f}%" if pd.notna(vol_12m) else "N/A")
+                
+                vol_24m = etf_returns.tail(504).std() * np.sqrt(252) if len(etf_returns) >= 504 else np.nan
+                st.metric("Vol 24M", f"{vol_24m*100:.2f}%" if pd.notna(vol_24m) else "N/A")
+                
+                vol_36m = etf_returns.tail(756).std() * np.sqrt(252) if len(etf_returns) >= 756 else np.nan
+                st.metric("Vol 36M", f"{vol_36m*100:.2f}%" if pd.notna(vol_36m) else "N/A")
+                
+                vol_total = etf_returns.std() * np.sqrt(252)
+                st.metric("Vol Total", f"{vol_total*100:.2f}%" if pd.notna(vol_total) else "N/A")
+            
+            st.markdown("---")
+            
+            # Drawdown section
+            st.markdown("#### Drawdown Analysis")
+            
+            dd_chart_col, dd_metrics_col = st.columns([3, 1])
+            
+            with dd_chart_col:
+                # Underwater plot
+                fig_underwater, max_dd_info = create_underwater_plot(etf_returns)
+                st.plotly_chart(fig_underwater, use_container_width=True)
+            
+            with dd_metrics_col:
+                # Drawdown metrics
+                mdd = etf_info.get('Max Drawdown', np.nan)
+                st.metric("Max Drawdown", f"{mdd*100:.2f}%" if pd.notna(mdd) else "N/A")
+                
+                # Calculate MDD duration from the plot info
+                if max_dd_info and 'length' in max_dd_info:
+                    mdd_days = max_dd_info['length']
+                    st.metric("MDD Duration", f"{int(mdd_days)} days" if mdd_days > 0 else "N/A")
+                
+                # Display CDaR metric
+                if max_dd_info and 'cdar_95' in max_dd_info:
+                    cdar_95 = max_dd_info['cdar_95']
+                    st.metric("CDaR (95%)", f"{cdar_95:.2f}%",
+                             help="Conditional Drawdown at Risk: Average of worst 5% drawdowns")
+                else:
+                    cdd = etf_info.get('Conditional Drawdown', np.nan)
+                    st.metric("CDaR (95%)", f"{cdd*100:.2f}%" if pd.notna(cdd) else "N/A",
+                             help="Conditional Drawdown at Risk: Average of worst 5% drawdowns")
+            
+            st.markdown("---")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # BENCHMARK EXPOSURES SECTION FOR ETFs
+            # ═══════════════════════════════════════════════════════════════════
+            
+            st.markdown("### 🌍 Benchmark Exposures")
+            
+            # Define benchmark ETFs list
+            ETF_BENCHMARK_LIST = ['VOO', 'SPY', 'QQQ', 'IWM', 'DIA', 'EFA', 'EEM', 'GLD', 'TLT', 'HYG', 'LQD', 'VNQ', 'XLF', 'XLE', 'XLK']
+            
+            # Filter to only available benchmarks in prices_df
+            available_etf_benchmarks = [b for b in ETF_BENCHMARK_LIST if b in prices_df.columns and b != selected_etf_ticker]
+            
+            if len(available_etf_benchmarks) > 0:
+                default_etf_exposure = ['VOO'] if 'VOO' in available_etf_benchmarks else [available_etf_benchmarks[0]] if available_etf_benchmarks else []
+                
+                selected_etf_exposure_benches = st.multiselect(
+                    "Select Benchmark ETFs for Exposure Analysis:",
+                    options=available_etf_benchmarks,
+                    default=default_etf_exposure,
+                    key="etf_detailed_exposure_select"
+                )
+                
+                if selected_etf_exposure_benches:
+                    exposure_data = []
+                    
+                    for bench in selected_etf_exposure_benches:
+                        # Get benchmark returns
+                        bench_prices = prices_df[bench].dropna()
+                        bench_returns = bench_prices.pct_change().dropna()
+                        
+                        # Align returns
+                        common_idx = etf_returns.index.intersection(bench_returns.index)
+                        if len(common_idx) < 250:
+                            # Insufficient data - use full data calculation
+                            etf_ret_aligned = etf_returns.reindex(common_idx)
+                            bench_ret_aligned = bench_returns.reindex(common_idx)
+                            
+                            if len(etf_ret_aligned) >= 50:
+                                u = to_empirical_cdf(etf_ret_aligned)
+                                v = to_empirical_cdf(bench_ret_aligned)
+                                
+                                tau = stats.kendalltau(u.values, v.values)[0]
+                                
+                                theta_lower, _ = estimate_gumbel_270_parameter(u.values, v.values)
+                                lambda_lower, _ = gumbel_270_tail_dependence(theta_lower)
+                                
+                                theta_upper, _ = estimate_gumbel_180_parameter(u.values, v.values)
+                                _, lambda_upper = gumbel_180_tail_dependence(theta_upper)
+                                
+                                asymmetry = (lambda_lower - lambda_upper) / (lambda_lower + lambda_upper) if (lambda_lower + lambda_upper) > 0 else 0
+                                
+                                exposure_data.append({
+                                    'Benchmark': f'{bench} - Full Period',
+                                    'Kendall Tau': tau,
+                                    'Tail Lower': lambda_lower,
+                                    'Tail Upper': lambda_upper,
+                                    'Asymmetry': asymmetry
+                                })
+                        else:
+                            # Calculate rolling copula metrics
+                            with st.spinner(f'Calculating exposure for {bench}...'):
+                                etf_ret_aligned = etf_returns.reindex(common_idx)
+                                bench_ret_aligned = bench_returns.reindex(common_idx)
+                                
+                                copula_results = estimate_rolling_copula_for_chart(
+                                    etf_ret_aligned,
+                                    bench_ret_aligned,
+                                    window=250
+                                )
+                                
+                                if copula_results is not None:
+                                    # Last window values (most recent)
+                                    last_kendall = copula_results['kendall_tau'].iloc[-1]
+                                    last_tail_lower = copula_results['tail_lower'].iloc[-1]
+                                    last_tail_upper = copula_results['tail_upper'].iloc[-1]
+                                    last_asymmetry = copula_results['asymmetry_index'].iloc[-1]
+                                    
+                                    # Average values across all windows
+                                    avg_kendall = copula_results['kendall_tau'].mean()
+                                    avg_tail_lower = copula_results['tail_lower'].mean()
+                                    avg_tail_upper = copula_results['tail_upper'].mean()
+                                    avg_asymmetry = copula_results['asymmetry_index'].mean()
+                                    
+                                    # Add last window row
+                                    exposure_data.append({
+                                        'Benchmark': f'{bench} - Last Window',
+                                        'Kendall Tau': last_kendall,
+                                        'Tail Lower': last_tail_lower,
+                                        'Tail Upper': last_tail_upper,
+                                        'Asymmetry': last_asymmetry
+                                    })
+                                    
+                                    # Add average row
+                                    exposure_data.append({
+                                        'Benchmark': f'{bench} - Average',
+                                        'Kendall Tau': avg_kendall,
+                                        'Tail Lower': avg_tail_lower,
+                                        'Tail Upper': avg_tail_upper,
+                                        'Asymmetry': avg_asymmetry
+                                    })
+                    
+                    if exposure_data:
+                        exposure_df = pd.DataFrame(exposure_data)
+                        
+                        # Color-coded gradient
+                        st.dataframe(
+                            exposure_df.style.format(
+                                {col: "{:.4f}" for col in exposure_df.columns if col != 'Benchmark'}
+                            ).background_gradient(
+                                cmap='RdYlGn',
+                                subset=[col for col in exposure_df.columns if col != 'Benchmark'],
+                                vmin=-1, vmax=1
+                            ),
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                        
+                        with st.expander("📚 Exposure Metrics Guide"):
+                            st.markdown("""
+                            **Kendall Tau**: Overall correlation (-1 to +1)
+                            - Positive: moves together | Zero: independent | Negative: moves opposite
+                            
+                            **Tail Lower**: Crash correlation (0 to 1)
+                            - High: ETF crashes together with benchmark
+                            
+                            **Tail Upper**: Boom correlation (0 to 1)
+                            - High: ETF rallies together with benchmark
+                            
+                            **Asymmetry**: Crash vs Boom bias (-1 to +1)
+                            - Positive: stronger crash correlation | Negative: stronger boom correlation
+                            """)
+                else:
+                    st.info("Select at least one benchmark ETF to view exposures")
+            else:
+                st.warning("⚠️ No benchmark ETFs available for exposure analysis")
+            
+            st.markdown("---")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # EXPOSURE TIME SERIES ANALYSIS FOR ETFs
+            # ═══════════════════════════════════════════════════════════════════
+            
+            st.markdown("### 📈 ETF Exposure Time Series Analysis")
+            
+            if len(available_etf_benchmarks) > 0:
+                # Default to VOO if available
+                default_ts_bench = 'VOO' if 'VOO' in available_etf_benchmarks else available_etf_benchmarks[0]
+                default_ts_idx = available_etf_benchmarks.index(default_ts_bench) if default_ts_bench in available_etf_benchmarks else 0
+                
+                selected_ts_benchmark = st.selectbox(
+                    "Select Benchmark for Time Series Analysis:",
+                    options=available_etf_benchmarks,
+                    index=default_ts_idx,
+                    key="etf_ts_benchmark_select"
+                )
+                
+                if selected_ts_benchmark:
+                    # Get benchmark returns
+                    bench_prices = prices_df[selected_ts_benchmark].dropna()
+                    bench_returns = bench_prices.pct_change().dropna()
+                    
+                    # Align returns
+                    common_idx = etf_returns.index.intersection(bench_returns.index)
+                    
+                    if len(common_idx) >= 300:  # Need enough data for rolling window + some history
+                        etf_ret_aligned = etf_returns.reindex(common_idx)
+                        bench_ret_aligned = bench_returns.reindex(common_idx)
+                        
+                        with st.spinner(f'Calculating exposure time series for {selected_ts_benchmark}...'):
+                            copula_results = estimate_rolling_copula_for_chart(
+                                etf_ret_aligned,
+                                bench_ret_aligned,
+                                window=250
+                            )
+                            
+                            if copula_results is not None:
+                                # Get last and average values
+                                last_kendall = copula_results['kendall_tau'].iloc[-1]
+                                avg_kendall = copula_results['kendall_tau'].mean()
+                                
+                                last_tail_lower = copula_results['tail_lower'].iloc[-1]
+                                avg_tail_lower = copula_results['tail_lower'].mean()
+                                
+                                last_tail_upper = copula_results['tail_upper'].iloc[-1]
+                                avg_tail_upper = copula_results['tail_upper'].mean()
+                                
+                                last_asymmetry = copula_results['asymmetry_index'].iloc[-1]
+                                avg_asymmetry = copula_results['asymmetry_index'].mean()
+                                
+                                # Create 2x2 grid of charts
+                                st.markdown(f"##### Exposure Evolution - {selected_ts_benchmark}")
+                                
+                                # Row 1: Kendall Tau and Asymmetry
+                                row1_col1, row1_col2 = st.columns(2)
+                                
+                                with row1_col1:
+                                    fig_kendall = create_exposure_time_series_chart(
+                                        copula_results,
+                                        'kendall_tau',
+                                        last_kendall,
+                                        avg_kendall,
+                                        selected_ts_benchmark
+                                    )
+                                    st.plotly_chart(fig_kendall, use_container_width=True)
+                                
+                                with row1_col2:
+                                    fig_asymmetry = create_exposure_time_series_chart(
+                                        copula_results,
+                                        'asymmetry_index',
+                                        last_asymmetry,
+                                        avg_asymmetry,
+                                        selected_ts_benchmark
+                                    )
+                                    st.plotly_chart(fig_asymmetry, use_container_width=True)
+                                
+                                # Row 2: Lower Tail and Upper Tail
+                                row2_col1, row2_col2 = st.columns(2)
+                                
+                                with row2_col1:
+                                    fig_tail_lower = create_exposure_time_series_chart(
+                                        copula_results,
+                                        'tail_lower',
+                                        last_tail_lower,
+                                        avg_tail_lower,
+                                        selected_ts_benchmark
+                                    )
+                                    st.plotly_chart(fig_tail_lower, use_container_width=True)
+                                
+                                with row2_col2:
+                                    fig_tail_upper = create_exposure_time_series_chart(
+                                        copula_results,
+                                        'tail_upper',
+                                        last_tail_upper,
+                                        avg_tail_upper,
+                                        selected_ts_benchmark
+                                    )
+                                    st.plotly_chart(fig_tail_upper, use_container_width=True)
+                                
+                                # Summary metrics
+                                st.markdown("##### Summary Statistics")
+                                summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
+                                
+                                with summary_col1:
+                                    st.metric(
+                                        "Kendall Tau (Last)",
+                                        f"{last_kendall:.4f}" if pd.notna(last_kendall) else "N/A",
+                                        delta=f"{(last_kendall - avg_kendall):.4f}" if pd.notna(last_kendall) and pd.notna(avg_kendall) else None
+                                    )
+                                
+                                with summary_col2:
+                                    st.metric(
+                                        "Lower Tail (Last)",
+                                        f"{last_tail_lower:.4f}" if pd.notna(last_tail_lower) else "N/A",
+                                        delta=f"{(last_tail_lower - avg_tail_lower):.4f}" if pd.notna(last_tail_lower) and pd.notna(avg_tail_lower) else None
+                                    )
+                                
+                                with summary_col3:
+                                    st.metric(
+                                        "Upper Tail (Last)",
+                                        f"{last_tail_upper:.4f}" if pd.notna(last_tail_upper) else "N/A",
+                                        delta=f"{(last_tail_upper - avg_tail_upper):.4f}" if pd.notna(last_tail_upper) and pd.notna(avg_tail_upper) else None
+                                    )
+                                
+                                with summary_col4:
+                                    st.metric(
+                                        "Asymmetry (Last)",
+                                        f"{last_asymmetry:.4f}" if pd.notna(last_asymmetry) else "N/A",
+                                        delta=f"{(last_asymmetry - avg_asymmetry):.4f}" if pd.notna(last_asymmetry) and pd.notna(avg_asymmetry) else None
+                                    )
+                                
+                                # Interpretation guide
+                                with st.expander("📖 How to Read These Charts"):
+                                    st.markdown("""
+                                    **Chart Elements:**
+                                    - **Yellow Line**: Time series of the exposure metric across all rolling windows
+                                    - **Red Dot**: Most recent value (last window)
+                                    - **Blue Line**: Average value across all windows (horizontal reference)
+                                    
+                                    **What This Shows:**
+                                    - The evolution of the ETF's relationship with the selected benchmark over time
+                                    - Whether current exposure is above or below historical average
+                                    - Trends and changes in the nature of the dependence
+                                    
+                                    **Interpreting Trends:**
+                                    - **Kendall Tau**: Overall correlation strength - higher means more synchronized movements
+                                    - **Lower Tail**: Crash correlation - higher means ETF tends to fall when benchmark crashes
+                                    - **Upper Tail**: Boom correlation - higher means ETF tends to rise when benchmark rallies
+                                    - **Asymmetry**: Positive = stronger crash link, Negative = stronger boom link
+                                    
+                                    **Rolling Window**: The calculations use a 250-day (≈1 year) rolling window, providing a dynamic view of how the relationship evolves over time.
+                                    """)
+                            else:
+                                st.warning("⚠️ Insufficient data to calculate exposure time series for this benchmark")
+                    else:
+                        st.warning(f"⚠️ Insufficient overlapping data between {selected_etf_ticker} and {selected_ts_benchmark} (need at least 300 days)")
+            else:
+                st.info("No benchmark ETFs available for time series analysis")
+            
+            st.markdown("---")
+        
+    
+    with tabs[2]:
+        st.title("⚖️ ADVANCED ETF COMPARISON")
+        st.markdown("### Select metrics and filter ETFs for comparison")
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════
+        # COLUMN SELECTION
+        # ═══════════════════════════════════════════════════════════════
+        
+        st.markdown("#### 📊 Select Columns to Display")
+        
+        # Define column categories
+        basic_info_cols = ['Name', 'Class', 'Total Assets ', 
+                          'Category', '# of Holdings', '% In Top 10']
+        
+        return_cols = ['Return 12M', 'Return 24M', 'Return 36M', 'Return 48M', 'Return 60M',
+                      'Return 2026', 'Return 2025', 'Return 2024', 'Return 2023', 'Return 2022',
+                      'Return 2021', 'Return 2020', 'Return 2019',
+                      'Excess 12M', 'Excess 24M', 'Excess 36M', 'Excess 48M', 'Excess 60M',
+                      'Excess 2026', 'Excess 2025', 'Excess 2024', 'Excess 2023', 'Excess 2022',
+                      'Excess 2021', 'Excess 2020', 'Excess 2019']
+        
+        advanced_cols = ['VaR(95)_D', 'CVaR(95)_D', 'Omega_D', 'Rachev_D',
+                        'VaR(95)_W', 'CVaR(95)_W', 'Omega_W', 'Rachev_W',
+                        'VaR(95)_M', 'CVaR(95)_M', 'Omega_M', 'Rachev_M',
+                        'Max Drawdown', 'Conditional Drawdown']
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            selected_basic = st.multiselect(
+                "Basic Information",
+                options=[c for c in basic_info_cols if c in metrics_df.columns],
+                default=['Name', 'Class', 'Category']
+            )
+        
+        with col2:
+            selected_returns = st.multiselect(
+                "Return Metrics",
+                options=[c for c in return_cols if c in metrics_df.columns],
+                default=['Return 12M', 'Return 24M', 'Excess 12M', 'Excess 24M']
+            )
+        
+        with col3:
+            selected_advanced = st.multiselect(
+                "Advanced Risk Metrics",
+                options=[c for c in advanced_cols if c in metrics_df.columns],
+                default=['VaR(95)_D', 'CVaR(95)_D', 'Max Drawdown']
+            )
+        
+        # Combine all selected columns
+        all_selected_cols = selected_basic + selected_returns + selected_advanced
+        
+        # Add ticker as index
+        if all_selected_cols:
+            # Make ticker the first column
+            display_df = metrics_df[all_selected_cols].copy()
+            display_df.insert(0, 'Ticker', display_df.index)
+        else:
+            st.warning("⚠️ Please select at least one column to display")
+            display_df = None
+        
+        if display_df is not None:
+            st.markdown("---")
+            
+            # ═══════════════════════════════════════════════════════════════
+            # FILTERING SECTION
+            # ═══════════════════════════════════════════════════════════════
+            
+            st.markdown("#### 🔎 Filter ETFs")
+            
+            # Separate numerical and categorical columns
+            numerical_cols = display_df.select_dtypes(include=[np.number]).columns.tolist()
+            categorical_cols = [col for col in all_selected_cols if col not in numerical_cols]
+            
+            # Numerical filters
+            active_filters = {}
+            with st.expander("📈 Numerical Filters (Min/Max Ranges)", expanded=True):
+                if numerical_cols:
+                    filter_cols = st.columns(3)
+                    
+                    for idx, col in enumerate(numerical_cols):
+                        with filter_cols[idx % 3]:
+                            col_data = display_df[col].dropna()
+                            if len(col_data) > 0:
+                                global_min = float(col_data.min())
+                                global_max = float(col_data.max())
+                                
+                                st.markdown(f"<h6 style='text-align: center; color: #D4AF37'>{col}</h6>", unsafe_allow_html=True)
+                                
+                                num_col1, num_col2 = st.columns(2)
+                                
+                                with num_col1:
+                                    st.markdown("<p style='text-align: center; margin-bottom: -10px;'>Min</p>", unsafe_allow_html=True)
+                                    min_val = st.number_input(
+                                        f"Min_{col}",
+                                        min_value=global_min,
+                                        max_value=global_max,
+                                        value=global_min,
+                                        key=f"etf_min_{col}",
+                                        label_visibility="collapsed"
+                                    )
+                                
+                                with num_col2:
+                                    st.markdown("<p style='text-align: center; margin-bottom: -10px;'>Max</p>", unsafe_allow_html=True)
+                                    max_val = st.number_input(
+                                        f"Max_{col}",
+                                        min_value=global_min,
+                                        max_value=global_max,
+                                        value=global_max,
+                                        key=f"etf_max_{col}",
+                                        label_visibility="collapsed"
+                                    )
+                                
+                                if (min_val != global_min) or (max_val != global_max):
+                                    active_filters[col] = (min_val, max_val)
+                else:
+                    st.info("No numerical columns selected")
+            
+            # Categorical filters
+            categorical_filters = {}
+            with st.expander("📂 Categorical Filters", expanded=False):
+                if categorical_cols:
+                    cat_filter_cols = st.columns(3)
+                    
+                    for idx, col in enumerate(categorical_cols):
+                        with cat_filter_cols[idx % 3]:
+                            unique_vals = display_df[col].dropna().unique().tolist()
+                            selected_vals = st.multiselect(
+                                col,
+                                options=unique_vals,
+                                default=unique_vals,
+                                key=f"etf_cat_{col}"
+                            )
+                            if len(selected_vals) < len(unique_vals):
+                                categorical_filters[col] = selected_vals
+                else:
+                    st.info("No categorical columns selected")
+            
+            # Apply filters
+            filtered_df = display_df.copy()
+            
+            # Apply numerical filters
+            for col, (min_val, max_val) in active_filters.items():
+                filtered_df = filtered_df[(filtered_df[col] >= min_val) & (filtered_df[col] <= max_val)]
+            
+            # Apply categorical filters
+            for col, selected_vals in categorical_filters.items():
+                filtered_df = filtered_df[filtered_df[col].isin(selected_vals)]
+            
+            st.markdown("---")
+            
+            # ═══════════════════════════════════════════════════════════════
+            # RESULTS DISPLAY
+            # ═══════════════════════════════════════════════════════════════
+            
+            st.markdown(f"#### 📊 Results ({len(filtered_df)} ETFs)")
+            
+            # Export button
+            export_col1, export_col2 = st.columns(2)
+            
+            with export_col1:
+                csv = filtered_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download as CSV",
+                    data=csv,
+                    file_name="fund_comparison_filtered.csv",
+                    mime="text/csv",
+                )
+            
+            with export_col2:
+                # Export to Portfolio Construction
+                if st.button("📤 Export to Portfolio Construction", use_container_width=True, key="etf_export_to_portfolio"):
+                    # Initialize session state for Portfolio export if not exists
+                    if 'selected_portfolio' not in st.session_state:
+                        st.session_state['selected_portfolio'] = []
+                    
+                    # Get ETF tickers from filtered results
+                    if 'Ticker' in filtered_df.columns:
+                        etfs_to_export = filtered_df['Ticker'].tolist()
+                        
+                        # Add to portfolio construction list (merge, not replace)
+                        new_etfs = 0
+                        for etf in etfs_to_export:
+                            if etf not in st.session_state['selected_portfolio']:
+                                st.session_state['selected_portfolio'].append(etf)
+                                new_etfs += 1
+                        
+                        st.success(f"✅ Exported {new_etfs} new ETFs to Portfolio Construction (Total: {len(st.session_state['selected_portfolio'])} ETFs)")
+                        st.info("💡 Navigate to the 'Portfolio Construction' tab to see your selection")
+                    else:
+                        st.error("❌ Cannot export: 'Ticker' column not in results")
+            
+            # Display filtered results
+            st.dataframe(
+                filtered_df,
+                use_container_width=True,
+                height=600
+            )
+            
+            # Summary statistics
+            st.markdown("---")
+            st.markdown("#### 📈 Summary Statistics")
+            
+            if numerical_cols:
+                summary_stats = filtered_df[numerical_cols].describe().T
+                summary_stats = summary_stats[['mean', 'std', 'min', '25%', '50%', '75%', 'max']]
+                st.dataframe(summary_stats, use_container_width=True)
+    
+    with tabs[3]:
+        st.title("🎯 PORTFOLIO CONSTRUCTION")
+        st.markdown("### Build an optimized Portfolio using Wasserstein Distributionally Robust Optimization (DRO)")
+        st.markdown("---")
+        
+        # Initialize session state for selected ETFs
+        if 'selected_portfolio' not in st.session_state:
+            st.session_state['selected_portfolio'] = []
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # ETF SELECTION INTERFACE
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        st.markdown("#### 📝 Step 1: Select Securities for Portfolio")
+        
+        # Selection method
+        selection_method = st.radio(
+            "Choose selection method:",
+            ["🔍 Search and Select Securities", "📤 Upload Excel File"],
+            horizontal=True,
+            key="etf_portfolio_selection_method"
+        )
+        
+        if selection_method == "📤 Upload Excel File":
+            st.markdown("---")
+            st.markdown("##### Upload ETF List")
+            
+            # Create template for download
+            template_df = pd.DataFrame({
+                'Ticker': ['VOO', 'AGG', 'VTI']
+            })
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                template_df.to_excel(writer, index=False)
+            buffer.seek(0)
+            
+            tc1, tc2 = st.columns([1, 2])
+            with tc1:
+                st.download_button(
+                    "📥 Download Template",
+                    buffer,
+                    "etf_selection_template.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            with tc2:
+                st.info("💡 Fill template with exact tickers, then upload.")
+            
+            uploaded_etfs = st.file_uploader("Upload ETF list", type=['xlsx'], key="etf_portfolio_upload")
+            
+            if uploaded_etfs:
+                try:
+                    uploaded_df = pd.read_excel(uploaded_etfs)
+                    if 'Ticker' in uploaded_df.columns:
+                        available_etfs = metrics_df.index.tolist()
+                        valid_etfs = []
+                        invalid_etfs = []
+                        
+                        for _, row in uploaded_df.iterrows():
+                            ticker = row['Ticker']
+                            if ticker in available_etfs:
+                                if ticker not in st.session_state['selected_portfolio']:
+                                    valid_etfs.append(ticker)
+                            else:
+                                invalid_etfs.append(ticker)
+                        
+                        if invalid_etfs:
+                            st.warning(f"⚠️ ETFs not found: {', '.join(invalid_etfs[:5])}{'...' if len(invalid_etfs) > 5 else ''}")
+                        
+                        if valid_etfs:
+                            st.success(f"✅ Found {len(valid_etfs)} valid ETFs")
+                            if st.button("➕ Add All Valid ETFs", key="add_uploaded_etfs"):
+                                st.session_state['selected_portfolio'].extend(valid_etfs)
+                                st.rerun()
+                    else:
+                        st.error("❌ Excel file must have a 'Ticker' column")
+                except Exception as e:
+                    st.error(f"❌ Error reading file: {e}")
+        else:
+            # Original dropdown selection
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                # ETF selector
+                available_etfs = metrics_df.index.tolist()
+                etf_names = metrics_df['Name'].tolist()
+                etf_display = [f"{ticker} - {name}" for ticker, name in zip(available_etfs, etf_names)]
+                etf_display_map = dict(zip(etf_display, available_etfs))
+                
+                # Filter out already selected
+                available_display = [d for d, t in etf_display_map.items() if t not in st.session_state['selected_portfolio']]
+                
+                selected_etf_display = st.selectbox(
+                    "Choose an ETF to add:",
+                    options=available_display,
+                    key="etf_selector_portfolio"
+                )
+                selected_etf = etf_display_map.get(selected_etf_display) if selected_etf_display else None
+            
+            with col2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("➕ ADD ETF", use_container_width=True):
+                    if selected_etf and selected_etf not in st.session_state['selected_portfolio']:
+                        st.session_state['selected_portfolio'].append(selected_etf)
+                        st.rerun()
+        
+        # Display selected ETFs
+        if st.session_state['selected_portfolio']:
+            st.markdown(f"**Selected Securities ({len(st.session_state['selected_portfolio'])}):**")
+            
+            # Create dataframe for display
+            selected_etf_df = metrics_df.loc[st.session_state['selected_portfolio']]
+            display_cols = ['Name', 'Class', 'Category']
+            display_etf_df = selected_etf_df[[c for c in display_cols if c in selected_etf_df.columns]].copy()
+            display_etf_df.insert(0, 'Ticker', display_etf_df.index)
+            
+            # Add remove buttons
+            for ticker in st.session_state['selected_portfolio']:
+                etf_row = metrics_df.loc[ticker]
+                etf_name = etf_row.get('Name', 'N/A')
+                asset_class = etf_row.get('Class', 'N/A')
+                category = etf_row.get('Category', 'N/A')
+                
+                col1, col2, col3, col4 = st.columns([2, 2, 3, 1])
+                
+                with col1:
+                    st.text(ticker)
+                with col2:
+                    st.text(asset_class)
+                with col3:
+                    st.text(category)
+                with col4:
+                    if st.button("❌", key=f"remove_etf_{ticker}"):
+                        st.session_state['selected_portfolio'].remove(ticker)
+                        st.rerun()
+            
+            # Clear all button
+            if st.button("🗑️ CLEAR ALL", use_container_width=False):
+                st.session_state['selected_portfolio'] = []
+                st.rerun()
+        else:
+            st.info("👆 Select Securities above to build your portfolio")
+        
+        # Require minimum 3 ETFs
+        if len(st.session_state['selected_portfolio']) < 3:
+            st.warning("⚠️ Please select at least 3 ETFs to proceed with portfolio optimization")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # OPTIMIZATION PARAMETERS - Only show if we have enough ETFs
+        if len(st.session_state.get('selected_portfolio', [])) >= 3:
+            st.markdown("---")
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+            st.markdown("#### ⚙️ Step 2: Configure Optimization Parameters")
+            
+            # Minimum History Requirement
+            with st.expander("📅 Minimum History Requirement", expanded=True):
+                st.markdown("""
+                **What it does:** Filters ETFs based on minimum historical data requirement.
+                
+                **Options:**
+                - **252 days (1 year)**: Minimum for statistical significance
+                - **504 days (2 years)**: Better for risk metrics
+                - **756 days (3 years)**: Recommended for stable optimization
+                
+                ETFs with insufficient history will be automatically excluded.
+                """)
+                
+                min_history_days = st.slider(
+                    "Minimum trading days:",
+                    min_value=252,
+                    max_value=1260,
+                    value=504,
+                    step=21,
+                    format="%d days",
+                    key="etf_min_history"
+                )
+            
+            # DRO Configuration
+            st.markdown("---")
+            dro_config = show_dro_configuration_panel()
+            st.markdown("---")
+            
+            # Objective Function
+            with st.expander("🎯 Optimization Objective", expanded=True):
+                st.markdown("""
+                **What it does:** Determines what the portfolio optimizer tries to maximize or minimize.
+                
+                **Objectives:**
+                - **Max Return**: Maximize total return (Wasserstein DRO)
+                - **Max Omega Ratio**: Maximize probability-weighted gains vs losses
+                - **Min CVaR (95%)**: Minimize expected tail loss (Conditional Value at Risk)
+                - **Min Volatility**: Minimize the annualized volatility            
+                """)
+                
+                objective = st.selectbox(
+                    "Select objective:",
+                    options=['max_return', 'min_volatility', 'min_cvar', 'max_omega'],
+                    index=0,
+                    format_func=lambda x: {
+                        'max_return': 'Max Return (Wasserstein DRO)',
+                        'max_omega': 'Max Omega Ratio (Wasserstein DRO)',
+                        'min_volatility': 'Min Volatility (Wasserstein DRO)',
+                        'min_cvar': 'Min CVaR 95% (Wasserstein DRO)'
+                    }[x],
+                    key="etf_objective"
+                )
+            
+            # Constraints
+            with st.expander("📊 Portfolio Constraints (Optional)", expanded=False):
+                st.markdown("""
+                **What it does:** Applies limits on portfolio risk and allocations.
+                
+                All constraints are optional. The optimizer will try to satisfy them, but may relax them if infeasible.
+                """)
+                
+                const_col1, const_col2 = st.columns(2)
+                
+                with const_col1:
+                    st.markdown("**Risk Constraints:**")
+                    
+                    use_max_vol = st.checkbox("Max Volatility", key="etf_use_max_vol")
+                    max_volatility = st.slider(
+                        "Annual volatility limit (%):",
+                        0.5, 15.0, 5.0, 0.01,
+                        disabled=not use_max_vol,
+                        key="etf_max_vol"
+                    ) / 100 if use_max_vol else None
+                    
+                    use_max_cvar = st.checkbox("Max CVaR (95%)", key="etf_use_max_cvar")
+                    max_cvar = st.slider(
+                        "Maximum expected tail loss (%):",
+                        -5.0, 0.0, -1.0, 0.01,
+                        disabled=not use_max_cvar,
+                        key="etf_max_cvar_slider"
+                    ) / 100 if use_max_cvar else None
+                
+                with const_col2:
+                    st.markdown("**Return Constraints:**")
+                    
+                    use_min_annual = st.checkbox("Min Annual Return", key="etf_use_min_annual")
+                    min_annual_return = st.slider(
+                        "Minimum Annual Return:",
+                        5.0, 20.0, 10.0, 0.1,
+                        disabled=not use_min_annual,
+                        key="etf_min_annual"
+                    ) / 100 if use_min_annual else None
+                    
+                    use_min_omega = st.checkbox("Min Omega Ratio", key="etf_use_min_omega")
+                    min_omega = st.slider(
+                        "Minimum gains-to-losses ratio:",
+                        1.0, 10.0, 2.0, 0.01,
+                        disabled=not use_min_omega,
+                        key="etf_min_omega_slider"
+                    ) if use_min_omega else None
+            
+            # Weight Constraints
+            with st.expander("⚖️ Weight Constraints", expanded=True):
+                st.markdown("""
+                **What it does:** Controls individual ETF and category allocations.
+                
+                **Constraint Types:**
+                1. **Global Per-ETF Constraints:** Min/max applied to ALL ETFs
+                2. **Individual Per-ETF Constraints:** Custom limits for specific ETFs
+                3. **Global Per-Category Constraints:** Max applied to ALL categories (Category)
+                4. **Individual Per-Category Constraints:** Custom limits for specific categories
+                
+                **Note:** Global minimum per ETF is applied post-optimization with proportional redistribution.
+                """)
+                
+                # Tab structure for different constraint types
+                constraint_tab1, constraint_tab2, constraint_tab3, constraint_tab4 = st.tabs([
+                    "🔹 Global ETF", 
+                    "🔸 Individual ETF", 
+                    "🔹 Global Category",
+                    "🔸 Individual Category"
+                ])
+                
+                # ═══ TAB 1: GLOBAL PER-ETF CONSTRAINTS ═══
+                with constraint_tab1:
+                    st.markdown("**Global Constraints Applied to All ETFs:**")
+                    
+                    global_etf_col1, global_etf_col2 = st.columns(2)
+                    
+                    with global_etf_col1:
+                        min_weight_global = st.slider(
+                            "Global Minimum weight per ETF (%):",
+                            0.0, 10.0, 1.0, 0.1,
+                            help="Minimum allocation to each ETF (applied post-optimization with redistribution)",
+                            key="etf_global_min_weight"
+                        ) / 100
+                    
+                    with global_etf_col2:
+                        max_weight_global = st.slider(
+                            "Global Maximum weight per ETF (%):",
+                            1.0, 100.0, 20.0, 0.5,
+                            help="Maximum allocation to any single ETF (hard constraint in optimization)",
+                            key="etf_global_max_weight"
+                        ) / 100
+                    
+                    st.info(f"📊 All ETFs will have: {min_weight_global*100:.1f}% ≤ weight ≤ {max_weight_global*100:.1f}%")
+                
+                # ═══ TAB 2: INDIVIDUAL PER-ETF CONSTRAINTS ═══
+                with constraint_tab2:
+                    st.markdown("**Custom Constraints for Specific ETFs:**")
+                    st.caption("Set individual min/max limits that override global constraints for specific ETFs")
+                    
+                    # Initialize session state for individual ETF constraints
+                    if 'individual_asset_constraints' not in st.session_state:
+                        st.session_state['individual_asset_constraints'] = {}
+                    
+                    # Get unique ETFs in selection
+                    if st.session_state['selected_portfolio']:
+                        # Create editable dataframe
+                        individual_etf_data = []
+                        for ticker in st.session_state['selected_portfolio']:
+                            existing = st.session_state['individual_asset_constraints'].get(ticker, {})
+                            individual_etf_data.append({
+                                'Ticker': ticker,
+                                'Min Weight (%)': existing.get('min', min_weight_global * 100),
+                                'Max Weight (%)': existing.get('max', max_weight_global * 100),
+                                'Active': ticker in st.session_state['individual_asset_constraints']
+                            })
+                        
+                        individual_etf_df = pd.DataFrame(individual_etf_data)
+                        
+                        st.markdown("**Edit Individual ETF Constraints:**")
+                        st.caption("💡 Check 'Active' to override global constraints for a specific ETF")
+                        
+                        # Display editable table
+                        edited_etf_df = st.data_editor(
+                            individual_etf_df,
+                            column_config={
+                                "Ticker": st.column_config.TextColumn("ETF Ticker", disabled=True),
+                                "Min Weight (%)": st.column_config.NumberColumn(
+                                    "Min Weight (%)",
+                                    min_value=0.0,
+                                    max_value=100.0,
+                                    step=0.1,
+                                    format="%.2f"
+                                ),
+                                "Max Weight (%)": st.column_config.NumberColumn(
+                                    "Max Weight (%)",
+                                    min_value=0.0,
+                                    max_value=100.0,
+                                    step=0.1,
+                                    format="%.2f"
+                                ),
+                                "Active": st.column_config.CheckboxColumn("Active", default=False)
+                            },
+                            hide_index=True,
+                            use_container_width=True,
+                            key="individual_etf_editor"
+                        )
+                        
+                        # Update session state
+                        st.session_state['individual_asset_constraints'] = {}
+                        for _, row in edited_etf_df.iterrows():
+                            if row['Active']:
+                                st.session_state['individual_asset_constraints'][row['Ticker']] = {
+                                    'min': row['Min Weight (%)'],
+                                    'max': row['Max Weight (%)']
+                                }
+                        
+                        # Show summary
+                        active_count = len(st.session_state['individual_asset_constraints'])
+                        if active_count > 0:
+                            st.success(f"✅ {active_count} ETFs have individual constraints")
+                        else:
+                            st.info("ℹ️ No individual ETF constraints active (using global constraints)")
+                    else:
+                        st.info("👆 Select Securities first to set individual constraints")
+                
+                # ═══ TAB 3: GLOBAL PER-CATEGORY CONSTRAINTS ═══
+                with constraint_tab3:
+                    st.markdown("**Global Constraint Applied to All Classes:**")
+                    st.caption("Classes define the broad investment type (e.g., Equity, Fixed Income, Commodities)")
+                    
+                    use_max_category_global = st.checkbox("Enable Global Max per Category", value=True, key="etf_global_cat_enabled")
+                    max_per_category_global = st.slider(
+                        "Global Max weight per category (%):",
+                        10.0, 100.0, 50.0, 5.0,
+                        disabled=not use_max_category_global,
+                        help="Maximum allocation to any single category (hard constraint in optimization)",
+                        key="etf_global_max_cat_weight"
+                    ) / 100 if use_max_category_global else None
+                    
+                    if use_max_category_global:
+                        st.info(f"📊 All categories limited to ≤ {max_per_category_global*100:.1f}%")
+                
+                # ═══ TAB 4: INDIVIDUAL PER-CATEGORY CONSTRAINTS ═══
+                with constraint_tab4:
+                    st.markdown("**Custom Constraints for Specific Classes:**")
+                    st.caption("Set individual min/max limits that override global constraints for specific asset classes")
+                    
+                    # Initialize session state for individual category constraints
+                    if 'individual_category_constraints_etf' not in st.session_state:
+                        st.session_state['individual_category_constraints_etf'] = {}
+                    
+                    # Get unique asset classes in selection
+                    if st.session_state['selected_portfolio']:
+                        selected_etf_df = metrics_df.loc[st.session_state['selected_portfolio']]
+                        # Get unique asset classes and filter out NaN values
+                        unique_categories = selected_etf_df['Class'].dropna().unique().tolist()
+                        # Convert to strings to ensure consistent sorting
+                        unique_categories = [str(cat) for cat in unique_categories]
+                        
+                        # Create editable dataframe
+                        individual_cat_data = []
+                        for category in sorted(unique_categories):
+                            existing = st.session_state['individual_category_constraints_etf'].get(category, {})
+                            individual_cat_data.append({
+                                'Category': category,
+                                'Min Weight (%)': existing.get('min', 0.0),
+                                'Max Weight (%)': existing.get('max', max_per_category_global * 100 if max_per_category_global else 100.0),
+                                'Active': category in st.session_state['individual_category_constraints_etf']
+                            })
+                        
+                        individual_cat_df = pd.DataFrame(individual_cat_data)
+                        
+                        st.markdown("**Edit Individual Category Constraints:**")
+                        st.caption("💡 Check 'Active' to override global constraints for a specific category")
+                        
+                        # Display editable table
+                        edited_cat_df = st.data_editor(
+                            individual_cat_df,
+                            column_config={
+                                "Category": st.column_config.TextColumn("Class", disabled=True),
+                                "Min Weight (%)": st.column_config.NumberColumn(
+                                    "Min Weight (%)",
+                                    min_value=0.0,
+                                    max_value=100.0,
+                                    step=1.0,
+                                    format="%.1f"
+                                ),
+                                "Max Weight (%)": st.column_config.NumberColumn(
+                                    "Max Weight (%)",
+                                    min_value=0.0,
+                                    max_value=100.0,
+                                    step=1.0,
+                                    format="%.1f"
+                                ),
+                                "Active": st.column_config.CheckboxColumn("Active", default=False)
+                            },
+                            hide_index=True,
+                            use_container_width=True,
+                            key="individual_etf_category_editor"
+                        )
+                        
+                        # Update session state
+                        st.session_state['individual_category_constraints_etf'] = {}
+                        for _, row in edited_cat_df.iterrows():
+                            if row['Active']:
+                                st.session_state['individual_category_constraints_etf'][row['Category']] = {
+                                    'min': row['Min Weight (%)'],
+                                    'max': row['Max Weight (%)']
+                                }
+                        
+                        # Show summary
+                        active_cat_count = len(st.session_state['individual_category_constraints_etf'])
+                        if active_cat_count > 0:
+                            st.success(f"✅ {active_cat_count} asset classes have individual constraints")
+                        else:
+                            st.info("ℹ️ No individual category constraints active (using global constraints)")
+                    else:
+                        st.info("👆 Select Securities first to set individual category constraints")
+            
+            st.markdown("---")
+            
+            # ═══════════════════════════════════════════════════════════════════════════
+            # RUN OPTIMIZATION
+            # ═══════════════════════════════════════════════════════════════════════════
+            
+            if st.button("🚀 RUN PORTFOLIO OPTIMIZATION", use_container_width=True, type="primary", key="etf_run_optimization"):
+                
+                with st.spinner("Preparing ETF data..."):
+                    # Get returns for all selected ETFs
+                    etf_returns_dict = {}
+                    valid_etfs = []
+                    etf_start_dates = {}
+                    
+                    for ticker in st.session_state['selected_portfolio']:
+                        if ticker in prices_df.columns:
+                            etf_price_series = prices_df[ticker].dropna()
+                            etf_return_series = etf_price_series.pct_change().dropna()
+                            
+                            if len(etf_return_series) >= min_history_days:
+                                etf_returns_dict[ticker] = etf_return_series
+                                valid_etfs.append(ticker)
+                                etf_start_dates[ticker] = etf_return_series.first_valid_index()
+                            else:
+                                st.warning(f"⚠️ Excluding {ticker}: Insufficient history ({len(etf_return_series)} days < {min_history_days})")
+                    
+                    if len(valid_etfs) < 3:
+                        st.error("❌ Insufficient valid ETFs after history filtering. Please select more ETFs or reduce minimum history requirement.")
+                        st.stop()
+                    
+                    st.success(f"✅ {len(valid_etfs)} ETFs meet individual minimum history requirement")
+                    
+                    # Align all returns to common date range
+                    all_returns_df = pd.DataFrame(etf_returns_dict)
+                    
+                    # Find youngest ETF (latest start date)
+                    youngest_start = max(etf_start_dates.values())
+                    
+                    # Show alignment info
+                    st.info(f"📅 Youngest ETF starts: {youngest_start.date()}")
+                    
+                    # Trim to common period
+                    all_returns_df = all_returns_df.loc[youngest_start:]
+                    all_returns_df = all_returns_df.fillna(0)
+                    
+                    # Check if aligned period meets minimum requirement
+                    aligned_length = len(all_returns_df)
+                    
+                    if aligned_length < min_history_days:
+                        st.error(f"❌ After alignment to common period: {aligned_length} days < {min_history_days} required")
+                        st.error(f"💡 The youngest ETF started on {youngest_start.date()}, leaving insufficient common history.")
+                        st.error(f"")
+                        st.error(f"**Options to fix this:**")
+                        st.error(f"1. **Reduce minimum history** to {aligned_length} days or less")
+                        st.error(f"2. **Remove newer ETFs** - Check which ETF started on {youngest_start.date()}")
+                        st.error(f"3. **Select older ETFs** with longer track records")
+                        
+                        # Show ETF start dates to help user identify the problem
+                        with st.expander("📊 ETF Start Dates (click to see which ETFs are newest)"):
+                            start_dates_df = pd.DataFrame([
+                                {'ETF': ticker, 'Start Date': date.date(), 'Days Available': len(all_returns_df)}
+                                for ticker, date in sorted(etf_start_dates.items(), key=lambda x: x[1], reverse=True)
+                            ])
+                            st.dataframe(start_dates_df, use_container_width=True, hide_index=True)
+                        
+                        st.stop()
+                    
+                    st.success(f"✅ Aligned period: {aligned_length} days (meets {min_history_days} requirement)")
+                    
+                    # Get VOO benchmark for aligned period
+                    voo_returns = prices_df['VOO'].pct_change().dropna()
+                    voo_returns = voo_returns.reindex(all_returns_df.index, method='ffill').fillna(0)
+                    
+                    st.success(f"✅ Data prepared: {len(all_returns_df)} days, {all_returns_df.shape[1]} ETFs")
+                
+                # Run DRO Optimization
+                st.markdown("---")
+                st.markdown("### 🎯 Running Wasserstein DRO Optimization")
+                
+                # Build ETF categories and subcategories dictionaries
+                asset_categories = {}
+                asset_subcategories = {}
+                for ticker in all_returns_df.columns:
+                    # Get Class and handle NaN
+                    asset_class = metrics_df.loc[ticker, 'Class']
+                    if pd.notna(asset_class):
+                        asset_categories[ticker] = str(asset_class)  # For constraints
+                    else:
+                        asset_categories[ticker] = 'Uncategorized'  # Default for NaN
+                    
+                    # Get Category and handle NaN
+                    etf_db_category = metrics_df.loc[ticker, 'Category']
+                    if pd.notna(etf_db_category):
+                        asset_subcategories[ticker] = str(etf_db_category)  # For display
+                    else:
+                        asset_subcategories[ticker] = 'Uncategorized'  # Default for NaN
+                
+                try:
+                    # Initialize DRO optimizer with V2 configuration
+                    optimizer = WassersteinDROOptimizer(
+                        returns=all_returns_df,
+                        fund_categories=asset_categories,
+                        config=dro_config
+                    )
+                    
+                    # Build weight constraints dictionary (4 levels)
+                    weight_constraints = {
+                        'global_fund': {
+                            'min': min_weight_global,
+                            'max': max_weight_global  
+                        }
+                    }
+                    
+                    # Add individual ETF constraints
+                    if 'individual_asset_constraints' in st.session_state and st.session_state['individual_asset_constraints']:
+                        individual_etf_dict = {}
+                        for ticker, limits in st.session_state['individual_asset_constraints'].items():
+                            individual_etf_dict[ticker] = {
+                                'min': limits['min'] / 100,
+                                'max': limits['max'] / 100
+                            }
+                        weight_constraints['individual_fund'] = individual_etf_dict
+                        st.info(f"ℹ️ Using individual constraints for {len(individual_etf_dict)} specific ETFs")
+                    
+                    # Add individual category constraints
+                    individual_category_dict = {}
+                    if 'individual_category_constraints_etf' in st.session_state and st.session_state['individual_category_constraints_etf']:
+                        for category, limits in st.session_state['individual_category_constraints_etf'].items():
+                            individual_category_dict[category] = {
+                                'min': limits['min'] / 100,
+                                'max': limits['max'] / 100
+                            }
+                        weight_constraints['individual_category'] = individual_category_dict
+                    
+                    # Add global category constraints
+                    if max_per_category_global is not None:
+                        global_category_dict = {}
+                        for category in set(asset_categories.values()):
+                            global_category_dict[category] = {'max': max_per_category_global}
+                        weight_constraints['global_category'] = global_category_dict
+                    
+                    # Validate constraints before running optimization
+                    validation_errors = []
+                    
+                    # Check global fund weight constraints
+                    if min_weight_global > max_weight_global:
+                        validation_errors.append(f"❌ Global ETF constraints: min ({min_weight_global*100:.1f}%) > max ({max_weight_global*100:.1f}%)")
+                    
+                    # Check individual category constraints
+                    if 'individual_category' in weight_constraints:
+                        for category, limits in weight_constraints['individual_category'].items():
+                            if limits['min'] > limits['max']:
+                                validation_errors.append(f"❌ Category '{category}': min ({limits['min']*100:.1f}%) > max ({limits['max']*100:.1f}%)")
+                        
+                        # Check if sum of minimums exceeds 100%
+                        total_cat_min = sum(lim['min'] for lim in weight_constraints['individual_category'].values())
+                        if total_cat_min > 1.0:
+                            validation_errors.append(f"❌ Sum of category minimums ({total_cat_min*100:.1f}%) exceeds 100%")
+                    
+                    # Display validation errors and stop if any exist
+                    if validation_errors:
+                        st.error("### ⚠️ Constraint Validation Errors")
+                        for error in validation_errors:
+                            st.error(error)
+                        st.warning("Please fix the constraint conflicts above before running optimization.")
+                        st.stop()
+                    else:
+                        st.success("✅ All constraints validated successfully")
+                    
+                    # Build portfolio constraints dictionary
+                    portfolio_constraints = {}
+                    if max_volatility is not None:
+                        portfolio_constraints['max_volatility'] = max_volatility
+                    if max_cvar is not None:
+                        portfolio_constraints['max_cvar'] = max_cvar
+                    if min_annual_return is not None:
+                        portfolio_constraints['min_annual_return'] = min_annual_return
+                    if min_omega is not None:
+                        portfolio_constraints['min_omega'] = min_omega
+                    
+                    # Run optimization with fixed optimizer
+                    with st.spinner(f"Optimizing Portfolio (objective: {objective})..."):
+                        progress_bar = st.progress(0)
+                        result = optimizer.optimize(
+                            objective=objective,
+                            constraints=portfolio_constraints,
+                            weight_constraints=weight_constraints
+                        )
+                        progress_bar.progress(100)
+                    
+                    # Display results using V2 display function
+                    if result.success:
+                        # Adapt display_dro_results_v2 for Securities
+                        # Category = Class, Subcategory = Category
+                        
+                        display_dro_results_v2(
+                            result,
+                            all_returns_df,
+                            voo_returns,  # Using VOO instead of CDI
+                            asset_categories,
+                            asset_subcategories  # Use categories as subcategories
+                        )
+                        
+                        # ═══════════════════════════════════════════════════════════════════
+                        # ADDITIONAL DETAILED PORTFOLIO ANALYSIS
+                        # ═══════════════════════════════════════════════════════════════════
+                        
+                        # Calculate portfolio returns
+                        weights_dict = result.weights.to_dict()
+                        portfolio_returns = pd.Series(0.0, index=all_returns_df.index)
+                        for ticker, weight in weights_dict.items():
+                            if weight > 0:
+                                portfolio_returns += all_returns_df[ticker] * weight
+                        
+                        st.markdown("---")
+                        st.markdown("## 📊 DETAILED PORTFOLIO ANALYSIS")
+                        
+                        # ═══════════════════════════════════════════════════════════════════
+                        # WEIGHT VISUALIZATION - PIE CHARTS WITH BUTTONS
+                        # ═══════════════════════════════════════════════════════════════════
+                        
+                        st.markdown("### 🎨 Portfolio Composition")
+                        
+                        # Buttons to switch view
+                        view_col1, view_col2 = st.columns(2)
+                        
+                        with view_col1:
+                            if st.button("📊 By ETF", use_container_width=True, key="etf_view_by_ticker"):
+                                st.session_state['portfolio_view'] = 'etf'
+                        
+                        with view_col2:
+                            if st.button("📁 By Category", use_container_width=True, key="etf_view_by_category"):
+                                st.session_state['portfolio_view'] = 'category'
+                        
+                        # Default view
+                        if 'portfolio_view' not in st.session_state:
+                            st.session_state['portfolio_view'] = 'etf'
+                        
+                        # Display selected view
+                        weights = result.weights
+                        fig_pie = create_portfolio_pie_chart(
+                            weights,
+                            st.session_state['portfolio_view'],
+                            asset_categories,
+                            asset_subcategories
+                        )
+                        st.plotly_chart(fig_pie, use_container_width=True)
+                        
+                        # Summary tables
+                        summary_col1, summary_col2 = st.columns(2)
+                        
+                        with summary_col1:
+                            st.markdown("#### Category Breakdown")
+                            category_weights = {}
+                            for ticker, weight in weights.items():
+                                cat = asset_categories.get(ticker, 'Unknown')
+                                category_weights[cat] = category_weights.get(cat, 0) + weight
+                            
+                            cat_df = pd.DataFrame({
+                                'Category': list(category_weights.keys()),
+                                'Weight %': [w*100 for w in category_weights.values()]
+                            }).sort_values('Weight %', ascending=False)
+                            
+                            st.dataframe(
+                                cat_df.style.format({'Weight %': '{:.2f}%'}),
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        
+                        with summary_col2:
+                            st.markdown("#### Top 10 Holdings")
+                            top10_weights = weights.nlargest(10)
+                            top10_df = pd.DataFrame({
+                                'Ticker': top10_weights.index,
+                                'Name': [metrics_df.loc[t, 'Name'] for t in top10_weights.index],
+                                'Weight %': top10_weights.values * 100
+                            })
+                            
+                            st.dataframe(
+                                top10_df.style.format({'Weight %': '{:.2f}%'}),
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        
+                        # Security Allocation Table
+                        st.markdown("#### Complete Security Allocation")
+                        weights_for_display = weights[weights > 0.001]
+                        etf_alloc_df = pd.DataFrame({
+                            'Ticker': weights_for_display.index,
+                            'Name': [metrics_df.loc[t, 'Name'] for t in weights_for_display.index],
+                            'Category': [asset_categories[t] for t in weights_for_display.index],
+                            'Weight %': weights_for_display.values * 100
+                        }).sort_values('Weight %', ascending=False)
+                        
+                        st.dataframe(
+                            etf_alloc_df.style.format({'Weight %': '{:.2f}%'}),
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                        
+                        st.markdown("---")
+                        
+                        # ═══════════════════════════════════════════════════════════════════
+                        # RETURNS ANALYSIS
+                        # ═══════════════════════════════════════════════════════════════════
+                        
+                        st.markdown("### 📈 Returns Analysis")
+                        
+                        # Period selection
+                        period_options = {'3M': 3, '6M': 6, '12M': 12, '24M': 24, '36M': 36, 'All': None}
+                        selected_period = st.selectbox("Select Period:", list(period_options.keys()), index=5, key="etf_portfolio_period")
+                        
+                        period_months = period_options[selected_period]
+                        
+                        if period_months:
+                            cutoff_date = portfolio_returns.index[-1] - pd.DateOffset(months=period_months)
+                            period_returns = portfolio_returns[portfolio_returns.index >= cutoff_date]
+                            period_voo = voo_returns[voo_returns.index >= cutoff_date]
+                        else:
+                            period_returns = portfolio_returns
+                            period_voo = voo_returns
+                        
+                        # Cumulative returns chart
+                        portfolio_cum = calculate_cumulative_returns(period_returns) * 100
+                        voo_cum = calculate_cumulative_returns(period_voo) * 100
+                        
+                        fig_returns = go.Figure()
+                        
+                        fig_returns.add_trace(go.Scatter(
+                            x=portfolio_cum.index,
+                            y=portfolio_cum.values,
+                            name='Portfolio',
+                            line=dict(color='#D4AF37', width=3),
+                            hovertemplate='%{y:.2f}%<extra></extra>'
+                        ))
+                        
+                        fig_returns.add_trace(go.Scatter(
+                            x=voo_cum.index,
+                            y=voo_cum.values,
+                            name='VOO',
+                            line=dict(color='#00CED1', width=2),
+                            hovertemplate='%{y:.2f}%<extra></extra>'
+                        ))
+                        
+                        fig_returns.update_layout(
+                            title=f'Cumulative Returns - {selected_period}',
+                            xaxis_title='Date',
+                            yaxis_title='Cumulative Return (%)',
+                            template=PLOTLY_TEMPLATE,
+                            hovermode='x unified',
+                            height=500
+                        )
+                        
+                        st.plotly_chart(fig_returns, use_container_width=True)
+                        
+                        # Calculate and display metrics for different periods
+                        periods_list = ['3M', '6M', '12M', '24M', '36M', 'Total']
+                        metrics_data = {'Period': [], 'Portfolio Return': [], 'VOO Return': [], 'Excess Return': []}
+                        
+                        for period_name in periods_list:
+                            if period_name == 'Total':
+                                p_ret = (1 + portfolio_returns).prod() - 1
+                                v_ret = (1 + voo_returns).prod() - 1
+                            else:
+                                months = int(period_name.replace('M', ''))
+                                cutoff = portfolio_returns.index[-1] - pd.DateOffset(months=months)
+                                
+                                if cutoff < portfolio_returns.index[0]:
+                                    continue
+                                
+                                p_ret = (1 + portfolio_returns[portfolio_returns.index >= cutoff]).prod() - 1
+                                v_ret = (1 + voo_returns[voo_returns.index >= cutoff]).prod() - 1
+                            
+                            metrics_data['Period'].append(period_name)
+                            metrics_data['Portfolio Return'].append(f"{p_ret*100:.2f}%")
+                            metrics_data['VOO Return'].append(f"{v_ret*100:.2f}%")
+                            metrics_data['Excess Return'].append(f"{(p_ret - v_ret)*100:.2f}%")
+                        
+                        metrics_df = pd.DataFrame(metrics_data)
+                        st.dataframe(metrics_df, use_container_width=True, hide_index=True)
+                        
+                        st.markdown("---")
+                        
+                        # ═══════════════════════════════════════════════════════════════════
+                        # MONTHLY RETURNS CALENDAR
+                        # ═══════════════════════════════════════════════════════════════════
+                        
+                        st.markdown("### 📅 Monthly Returns Calendar")
+                        
+                        # Comparison method selection
+                        comparison_method = st.selectbox(
+                            "Comparison Method:",
+                            options=['Relative Performance', 'Percentage Points', 'Benchmark Performance'],
+                            index=0,
+                            key="etf_portfolio_comparison_method"
+                        )
+                        
+                        # Create monthly returns table
+                        monthly_table = create_monthly_returns_table(
+                            portfolio_returns,
+                            voo_returns,
+                            comparison_method
+                        )
+                        
+                        # Style the table as HTML
+                        styled_html = style_monthly_returns_table(monthly_table, comparison_method)
+                        
+                        # Display HTML table
+                        st.markdown(styled_html, unsafe_allow_html=True)
+                        
+                        # Add explanation
+                        with st.expander("ℹ️ Understanding the Monthly Returns Calendar"):
+                            explanation_text = f"""
+                            **How to read this table:**
+                            
+                            For each year, {"two" if comparison_method == "Benchmark Performance" else "three"} rows are displayed:
+                            - **Portfolio**: Monthly returns of the Portfolio
+                            """
+                            
+                            if comparison_method != 'Benchmark Performance':
+                                explanation_text += f"- **Benchmark**: Monthly returns of VOO\n"
+                            
+                            explanation_text += f"""- **{comparison_method}**: The comparison metric between portfolio and VOO
+                            
+                            **Comparison Methods:**
+                            - **Relative Performance**: Ratio showing portfolio performance relative to benchmark
+                            - **Percentage Points**: Portfolio return minus VOO return in absolute terms
+                            - **Benchmark Performance**: Displays VOO's monthly returns for reference
+                            
+                            **Columns:**
+                            - **Year**: The calendar year
+                            - **Type**: Portfolio, Benchmark (if shown), or Comparison metric
+                            - **Jan-Dec**: Monthly returns/comparison for each month
+                            - **YTD**: Year-to-date accumulated performance
+                            - **Total**: Cumulative performance since the beginning
+                            
+                            **Visual Guide:**
+                            - Negative values are displayed in **red** for easy identification
+                            - Bold gold borders separate year groups and column sections
+                            """
+                            
+                            st.markdown(explanation_text)
+                        
+                        st.markdown("---")
+                        
+                        # ═══════════════════════════════════════════════════════════════════
+                        # RISK-ADJUSTED PERFORMANCE
+                        # ═══════════════════════════════════════════════════════════════════
+                        
+                        st.markdown("### ⚖️ Risk-Adjusted Performance")
+                        
+                        # Frequency selection
+                        frequency_choice = st.radio(
+                            "Select frequency for Omega, Rachev, VaR and CVaR analysis:",
+                            options=['Daily', 'Weekly', 'Monthly'],
+                            horizontal=True,
+                            key="etf_portfolio_freq"
+                        )
+                        
+                        if frequency_choice == 'Daily':
+                            analysis_returns = portfolio_returns
+                        elif frequency_choice == 'Weekly':
+                            analysis_returns = portfolio_returns.resample('W').apply(lambda x: (1 + x).prod() - 1)
+                        else:
+                            analysis_returns = portfolio_returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
+                        
+                        st.markdown("---")
+                        
+                        # Omega Section
+                        st.markdown("#### Omega Ratio")
+                        
+                        omega_chart_col, omega_gauge_col = st.columns([2, 1])
+                        
+                        with omega_chart_col:
+                            fig_omega = create_omega_cdf_chart(analysis_returns, threshold=0, frequency=frequency_choice.lower())
+                            st.plotly_chart(fig_omega, use_container_width=True)
+                        
+                        with omega_gauge_col:
+                            omega_val = PortfolioMetrics.omega_ratio(analysis_returns)
+                            fig_omega_gauge = create_omega_gauge(omega_val, frequency=frequency_choice)
+                            st.plotly_chart(fig_omega_gauge, use_container_width=True)
+                        
+                        st.markdown("---")
+                        
+                        # Rachev / VaR / CVaR Section
+                        st.markdown("#### Rachev Ratio & Tail Risk")
+                        
+                        rachev_chart_col, rachev_metrics_col = st.columns([2, 1])
+                        
+                        with rachev_chart_col:
+                            var_val = PortfolioMetrics.var(analysis_returns, 0.95)
+                            cvar_val = PortfolioMetrics.cvar(analysis_returns, 0.95)
+                            
+                            fig_rachev = create_combined_rachev_var_chart(
+                                analysis_returns, var_val, cvar_val, frequency=frequency_choice.lower()
+                            )
+                            st.plotly_chart(fig_rachev, use_container_width=True)
+                        
+                        with rachev_metrics_col:
+                            rachev_val = PortfolioMetrics.rachev_ratio(analysis_returns, alpha=0.05)
+                            fig_rachev_gauge = create_rachev_gauge(rachev_val, frequency=frequency_choice)
+                            st.plotly_chart(fig_rachev_gauge, use_container_width=True)
+                        
+                        st.markdown("---")
+                        
+                        # ═══════════════════════════════════════════════════════════════════
+                        # SHARPE RATIO ANALYSIS
+                        # ═══════════════════════════════════════════════════════════════════
+                        
+                        st.markdown("### 📊 Sharpe Ratio Analysis")
+                        
+                        sharpe_chart_col, sharpe_metrics_col = st.columns([3, 1])
+                        
+                        with sharpe_chart_col:
+                            fig_sharpe = create_rolling_sharpe_chart(portfolio_returns, window_months=12)
+                            st.plotly_chart(fig_sharpe, use_container_width=True)
+                        
+                        with sharpe_metrics_col:
+                            # Calculate Sharpe for different periods
+                            for period_name, months in [('12M', 12), ('24M', 24), ('36M', 36), ('Total', None)]:
+                                if months:
+                                    cutoff = portfolio_returns.index[-1] - pd.DateOffset(months=months)
+                                    if cutoff >= portfolio_returns.index[0]:
+                                        period_ret = portfolio_returns[portfolio_returns.index >= cutoff]
+                                    else:
+                                        continue
+                                else:
+                                    period_ret = portfolio_returns
+                                
+                                sharpe = PortfolioMetrics.sharpe_ratio(period_ret)
+                                st.metric(f"Sharpe {period_name}", f"{sharpe:.2f}")
+                        
+                        st.markdown("---")
+                        
+                        # ═══════════════════════════════════════════════════════════════════
+                        # RISK METRICS DASHBOARD
+                        # ═══════════════════════════════════════════════════════════════════
+                        
+                        st.markdown("### 🎯 Risk Metrics Dashboard")
+                        
+                        # Volatility section
+                        st.markdown("#### Volatility Analysis")
+                        
+                        vol_chart_col, vol_metrics_col = st.columns([3, 1])
+                        
+                        with vol_chart_col:
+                            fig_vol = create_rolling_vol_chart(portfolio_returns, window_months=12)
+                            st.plotly_chart(fig_vol, use_container_width=True)
+                        
+                        with vol_metrics_col:
+                            for period_name, months in [('12M', 12), ('24M', 24), ('36M', 36), ('Total', None)]:
+                                if months:
+                                    cutoff = portfolio_returns.index[-1] - pd.DateOffset(months=months)
+                                    if cutoff >= portfolio_returns.index[0]:
+                                        period_ret = portfolio_returns[portfolio_returns.index >= cutoff]
+                                    else:
+                                        continue
+                                else:
+                                    period_ret = portfolio_returns
+                                
+                                vol = PortfolioMetrics.annualized_volatility(period_ret)
+                                st.metric(f"Vol {period_name}", f"{vol*100:.2f}%")
+                        
+                        st.markdown("---")
+                        
+                        # Drawdown section
+                        st.markdown("#### Drawdown Analysis")
+                        
+                        dd_chart_col, dd_metrics_col = st.columns([3, 1])
+                        
+                        with dd_chart_col:
+                            fig_underwater, max_dd_info = create_underwater_plot(portfolio_returns)
+                            st.plotly_chart(fig_underwater, use_container_width=True)
+                        
+                        with dd_metrics_col:
+                            mdd = PortfolioMetrics.max_drawdown(portfolio_returns)
+                            st.metric("Max Drawdown", f"{mdd*100:.2f}%")
+                            
+                            # Display CDaR metric
+                            if max_dd_info and 'cdar_95' in max_dd_info:
+                                cdar_95 = max_dd_info['cdar_95']
+                                st.metric("CDaR (95%)", f"{cdar_95:.2f}%",
+                                         help="Conditional Drawdown at Risk: Average of worst 5% drawdowns")
+                            
+                            # Calculate MDD duration
+                            if max_dd_info and 'length' in max_dd_info:
+                                mdd_days = max_dd_info['length']
+                                st.metric("MDD Duration", f"{int(mdd_days)} days" if mdd_days > 0 else "N/A")
+                            else:
+                                st.metric("MDD Duration", "N/A")
+                        
+                        st.markdown("---")
+                        
+                        # ═══════════════════════════════════════════════════════════════════
+                        # BENCHMARK EXPOSURES
+                        # ═══════════════════════════════════════════════════════════════════
+                        
+                        st.markdown("### 🌐 Benchmark Exposures")
+                        st.markdown("**Note:** Portfolio exposures are calculated against VOO (S&P 500) benchmark")
+                        
+                        st.info("ℹ️ Copula-based exposure analysis is available for Investment Funds. Portfolios use VOO as the primary benchmark.")
+                        
+                    else:
+                        st.error(f"❌ Optimization failed: {result.solver_status}")
+                        with st.expander("📋 Optimization Log"):
+                            for log_entry in result.optimization_log:
+                                st.text(log_entry)
+                
+                except Exception as e:
+                    st.error(f"❌ Error during optimization: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+    
+    with tabs[4]:
+        st.title("💼 RECOMMENDED ETF PORTFOLIO")
+        st.markdown("### Create and analyze your recommended ETF portfolio")
+        st.markdown("---")
+        
+        # Initialize session state for ETF recommended portfolio
+        if 'etf_recommended_portfolio' not in st.session_state:
+            st.session_state['etf_recommended_portfolio'] = {}
+        if 'etf_recommended_portfolio_saved' not in st.session_state:
+            st.session_state['etf_recommended_portfolio_saved'] = False
+        if 'etf_temp_portfolio' not in st.session_state:
+            st.session_state['etf_temp_portfolio'] = {}
+        
+        etf_rec_tab1, etf_rec_tab2, etf_rec_tab3 = st.tabs(["📊 Portfolio Analysis", "📈 ETF Analysis", "📚 Book Analysis"])
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECONDARY TAB 1: PORTFOLIO ANALYSIS
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        with etf_rec_tab1:
+            st.markdown("### 📊 Portfolio Analysis")
+            st.markdown("---")
+            st.markdown("#### 📝 Create Your Portfolio")
+            
+            creation_method = st.radio("Choose method:", ["📤 Upload Excel File", "🔍 Search and Select ETFs"], horizontal=True, key="etf_rec_method")
+            
+            if creation_method == "📤 Upload Excel File":
+                st.markdown("---")
+                # Create template
+                template_df = pd.DataFrame({
+                    'ETF Ticker': ['VOO', 'QQQ', 'IWM'],
+                    'Allocation (%)': [50.0, 30.0, 20.0]
+                })
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    template_df.to_excel(writer, index=False)
+                buffer.seek(0)
+                c1, c2 = st.columns([1, 2])
+                with c1:
+                    st.download_button("📥 Download Template", buffer, "etf_portfolio_template.xlsx", use_container_width=True)
+                with c2:
+                    st.info("💡 Fill template with ETF tickers and allocations, then upload.")
+                
+                uploaded = st.file_uploader("Upload portfolio", type=['xlsx'], key="etf_rec_upload")
+                if uploaded:
+                    try:
+                        pdf = pd.read_excel(uploaded)
+                        if 'ETF Ticker' in pdf.columns and 'Allocation (%)' in pdf.columns:
+                            avail = metrics_df.index.tolist()
+                            valid, invalid = {}, []
+                            for _, r in pdf.iterrows():
+                                if r['ETF Ticker'] in avail:
+                                    valid[r['ETF Ticker']] = r['Allocation (%)']
+                                else:
+                                    invalid.append(r['ETF Ticker'])
+                            if invalid:
+                                st.warning(f"Not found: {', '.join(invalid)}")
+                            if valid:
+                                st.success(f"✅ {len(valid)} valid ETFs")
+                                if st.button("💾 Save Portfolio", key="etf_save_up"):
+                                    st.session_state['etf_recommended_portfolio'] = valid
+                                    st.session_state['etf_recommended_portfolio_saved'] = True
+                                    st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            else:
+                st.markdown("---")
+                avail = metrics_df.index.tolist()
+                c1, c2, c3 = st.columns([3, 1, 1])
+                with c1:
+                    sel = st.selectbox("ETF:", [f for f in avail if f not in st.session_state['etf_temp_portfolio']], key="etf_rec_sel")
+                with c2:
+                    alloc = st.number_input("Alloc (%)", 0.1, 100.0, 10.0, 0.5, key="etf_rec_alloc")
+                with c3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("➕ Add", key="etf_rec_add"):
+                        st.session_state['etf_temp_portfolio'][sel] = alloc
+                        st.rerun()
+                
+                if st.session_state['etf_temp_portfolio']:
+                    for fn in list(st.session_state['etf_temp_portfolio'].keys()):
+                        c1, c2, c3 = st.columns([3, 1, 1])
+                        with c1:
+                            st.text(fn)
+                        with c2:
+                            st.session_state['etf_temp_portfolio'][fn] = st.number_input("", 0.1, 100.0, float(st.session_state['etf_temp_portfolio'][fn]), 0.5, key=f"etf_a_{fn}", label_visibility="collapsed")
+                        with c3:
+                            if st.button("❌", key=f"etf_r_{fn}"):
+                                del st.session_state['etf_temp_portfolio'][fn]
+                                st.rerun()
+                    
+                    st.metric("Total", f"{sum(st.session_state['etf_temp_portfolio'].values()):.1f}%")
+                    if st.button("💾 Save Portfolio", key="etf_save_sel"):
+                        st.session_state['etf_recommended_portfolio'] = st.session_state['etf_temp_portfolio'].copy()
+                        st.session_state['etf_recommended_portfolio_saved'] = True
+                        st.rerun()
+            
+            st.markdown("---")
+            
+            # ═══════════════════════════════════════════════════════════════════════════
+            # SUPABASE ETF PORTFOLIO STORAGE
+            # ═══════════════════════════════════════════════════════════════════════════
+            
+            with st.expander("☁️ Cloud Portfolio Storage (Supabase)", expanded=False):
+                supabase_client = get_supabase_client()
+                
+                if not SUPABASE_AVAILABLE:
+                    st.warning("⚠️ Supabase library not installed. Run: `pip install supabase`")
+                elif not supabase_client:
+                    st.info("""
+                    **Configure Supabase to save ETF portfolios to the cloud:**
+                    
+                    1. Create a Supabase account at https://supabase.com
+                    2. Create a new project
+                    3. Run the SQL below to create the table
+                    4. Set `SUPABASE_URL` and `SUPABASE_KEY` in the app config or use Streamlit secrets
+                    """)
+                    
+                    st.code("""
+-- SQL to create the etf_recommended_portfolios table in Supabase
+CREATE TABLE etf_recommended_portfolios (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'default',
+    portfolio_name TEXT NOT NULL,
+    portfolio_data JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id, portfolio_name)
+);
+
+-- Create index for faster lookups
+CREATE INDEX idx_etf_portfolios_user_id ON etf_recommended_portfolios(user_id);
+
+-- Enable Row Level Security (optional, for multi-user)
+ALTER TABLE etf_recommended_portfolios ENABLE ROW LEVEL SECURITY;
+
+-- Policy to allow all operations (adjust for production)
+CREATE POLICY "Allow all operations" ON etf_recommended_portfolios
+    FOR ALL USING (true) WITH CHECK (true);
+                    """, language="sql")
+                else:
+                    st.success("✅ Connected to Supabase")
+                    
+                    # Get current user (from session or default)
+                    current_user = st.session_state.get('username', 'default')
+                    
+                    save_col, load_col = st.columns(2)
+                    
+                    with save_col:
+                        st.markdown("##### 💾 Save Current Portfolio")
+                        
+                        if st.session_state.get('etf_recommended_portfolio'):
+                            save_name = st.text_input(
+                                "Portfolio Name:", 
+                                value=f"ETF_Portfolio_{datetime.now().strftime('%Y%m%d')}",
+                                key="etf_supabase_save_name"
+                            )
+                            
+                            if st.button("☁️ Save to Supabase", key="etf_supabase_save_btn", use_container_width=True):
+                                try:
+                                    data = {
+                                        'user_id': current_user,
+                                        'portfolio_name': save_name,
+                                        'portfolio_data': st.session_state['etf_recommended_portfolio'],
+                                        'updated_at': datetime.now().isoformat()
+                                    }
+                                    result = supabase_client.table('etf_recommended_portfolios').upsert(
+                                        data, on_conflict='user_id,portfolio_name'
+                                    ).execute()
+                                    if result.data:
+                                        st.success(f"✅ Portfolio '{save_name}' saved!")
+                                        st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error saving: {e}")
+                        else:
+                            st.info("Create a portfolio first to save it")
+                    
+                    with load_col:
+                        st.markdown("##### 📂 Load Saved Portfolio")
+                        
+                        try:
+                            result = supabase_client.table('etf_recommended_portfolios').select('*').eq('user_id', current_user).execute()
+                            saved_portfolios = result.data if result.data else []
+                        except:
+                            saved_portfolios = []
+                        
+                        if saved_portfolios:
+                            portfolio_options = [p['portfolio_name'] for p in saved_portfolios]
+                            selected_load = st.selectbox("Select portfolio:", portfolio_options, key="etf_supabase_load_select")
+                            
+                            if st.button("📥 Load Portfolio", key="etf_supabase_load_btn", use_container_width=True):
+                                for p in saved_portfolios:
+                                    if p['portfolio_name'] == selected_load:
+                                        st.session_state['etf_recommended_portfolio'] = p['portfolio_data']
+                                        st.session_state['etf_recommended_portfolio_saved'] = True
+                                        st.success(f"✅ Loaded '{selected_load}'")
+                                        st.rerun()
+                        else:
+                            st.info("No saved portfolios found")
+            
+            st.markdown("---")
+            
+            # ═══════════════════════════════════════════════════════════════════════════
+            # PORTFOLIO ANALYSIS SECTION
+            # ═══════════════════════════════════════════════════════════════════════════
+            
+            if st.session_state.get('etf_recommended_portfolio') and st.session_state.get('etf_recommended_portfolio_saved'):
+                portfolio = st.session_state['etf_recommended_portfolio']
+                
+                st.markdown("### 📊 Current Portfolio")
+                
+                # Display portfolio table
+                portfolio_df = pd.DataFrame([
+                    {'ETF': k, 'Allocation (%)': v} for k, v in portfolio.items()
+                ])
+                st.dataframe(portfolio_df, use_container_width=True, hide_index=True)
+                
+                # Calculate portfolio returns
+                portfolio_returns = None
+                valid_etfs = []
+                
+                for ticker, weight in portfolio.items():
+                    if ticker in prices_df.columns:
+                        etf_prices = prices_df[ticker].dropna()
+                        etf_rets = etf_prices.pct_change().dropna()
+                        
+                        if portfolio_returns is None:
+                            portfolio_returns = etf_rets * (weight / 100)
+                        else:
+                            common_idx = portfolio_returns.index.intersection(etf_rets.index)
+                            portfolio_returns = portfolio_returns.reindex(common_idx).fillna(0) + etf_rets.reindex(common_idx).fillna(0) * (weight / 100)
+                        valid_etfs.append(ticker)
+                
+                if portfolio_returns is not None and len(portfolio_returns) > 0:
+                    # Period selection
+                    period_col, _ = st.columns([1, 3])
+                    with period_col:
+                        period_map = {'3M': 3, '6M': 6, '12M': 12, '24M': 24, '36M': 36, 'All': None}
+                        selected_period = st.selectbox("Select Period:", list(period_map.keys()), index=5, key="etf_rec_period")
+                    
+                    if selected_period != 'All':
+                        months = period_map[selected_period]
+                        cutoff = portfolio_returns.index[-1] - pd.DateOffset(months=months)
+                        portfolio_returns_filtered = portfolio_returns[portfolio_returns.index >= cutoff]
+                    else:
+                        portfolio_returns_filtered = portfolio_returns
+                    
+                    # Get benchmark for comparison
+                    voo_returns = prices_df['VOO'].pct_change().dropna() if 'VOO' in prices_df.columns else None
+                    
+                    # Calculate metrics using PortfolioMetrics static methods
+                    # Display metrics
+                    st.markdown("### 📈 Performance Metrics")
+                    
+                    met_col1, met_col2, met_col3, met_col4 = st.columns(4)
+                    
+                    with met_col1:
+                        total_return = (1 + portfolio_returns_filtered).prod() - 1
+                        st.metric("Total Return", f"{total_return*100:.2f}%")
+                    
+                    with met_col2:
+                        annual_return = PortfolioMetrics.cagr(portfolio_returns_filtered)
+                        st.metric("Annual Return", f"{annual_return*100:.2f}%")
+                    
+                    with met_col3:
+                        volatility = PortfolioMetrics.annualized_volatility(portfolio_returns_filtered)
+                        st.metric("Volatility", f"{volatility*100:.2f}%")
+                    
+                    with met_col4:
+                        sharpe = PortfolioMetrics.sharpe_ratio(portfolio_returns_filtered)
+                        st.metric("Sharpe Ratio", f"{sharpe:.2f}")
+                    
+                    met_col5, met_col6, met_col7, met_col8 = st.columns(4)
+                    
+                    with met_col5:
+                        mdd = PortfolioMetrics.max_drawdown(portfolio_returns_filtered)
+                        st.metric("Max Drawdown", f"{mdd*100:.2f}%")
+                    
+                    with met_col6:
+                        # Sortino ratio calculation
+                        downside_returns = portfolio_returns_filtered[portfolio_returns_filtered < 0]
+                        if len(downside_returns) > 0 and downside_returns.std() > 0:
+                            sortino = (portfolio_returns_filtered.mean() / downside_returns.std()) * np.sqrt(252)
+                        else:
+                            sortino = 0.0
+                        st.metric("Sortino Ratio", f"{sortino:.2f}")
+                    
+                    with met_col7:
+                        # Calmar ratio calculation
+                        cagr_val = PortfolioMetrics.cagr(portfolio_returns_filtered)
+                        mdd_val = abs(PortfolioMetrics.max_drawdown(portfolio_returns_filtered))
+                        calmar = cagr_val / mdd_val if mdd_val > 0 else 0.0
+                        st.metric("Calmar Ratio", f"{calmar:.2f}")
+                    
+                    with met_col8:
+                        omega = PortfolioMetrics.omega_ratio(portfolio_returns_filtered)
+                        st.metric("Omega Ratio", f"{omega:.2f}" if not np.isinf(omega) else "∞")
+                    
+                    st.markdown("---")
+                    
+                    # Cumulative returns chart
+                    st.markdown("### 📈 Cumulative Returns")
+                    
+                    portfolio_cum = (1 + portfolio_returns_filtered).cumprod()
+                    
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=portfolio_cum.index,
+                        y=(portfolio_cum - 1) * 100,
+                        name='Portfolio',
+                        line=dict(color='#D4AF37', width=2)
+                    ))
+                    
+                    if voo_returns is not None:
+                        voo_filtered = voo_returns.reindex(portfolio_returns_filtered.index).fillna(0)
+                        voo_cum = (1 + voo_filtered).cumprod()
+                        fig.add_trace(go.Scatter(
+                            x=voo_cum.index,
+                            y=(voo_cum - 1) * 100,
+                            name='VOO (Benchmark)',
+                            line=dict(color='#00CED1', width=2)
+                        ))
+                    
+                    fig.update_layout(
+                        title="Cumulative Returns (%)",
+                        xaxis_title="Date",
+                        yaxis_title="Return (%)",
+                        template=PLOTLY_TEMPLATE,
+                        height=450,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Allocation pie charts
+                    st.markdown("### 📊 Portfolio Allocation")
+                    
+                    # Create mappings for ETF Class and Category
+                    etf_classes = {}
+                    etf_categories = {}
+                    for ticker in portfolio.keys():
+                        if ticker in metrics_df.index:
+                            etf_classes[ticker] = metrics_df.loc[ticker].get('Class', 'Unknown')
+                            etf_categories[ticker] = metrics_df.loc[ticker].get('Category', 'Unknown')
+                        else:
+                            etf_classes[ticker] = 'Unknown'
+                            etf_categories[ticker] = 'Unknown'
+                    
+                    # Create weights series
+                    weights_series = pd.Series(portfolio)
+                    
+                    # Chart type selection
+                    pie_chart_type = st.radio(
+                        "View allocation by:",
+                        ['ETF', 'Class', 'Category'],
+                        horizontal=True,
+                        key="etf_rec_pie_type"
+                    )
+                    
+                    chart_type_map = {'ETF': 'fund', 'Class': 'category', 'Category': 'subcategory'}
+                    
+                    fig_pie = create_portfolio_pie_chart(
+                        weights_series, 
+                        chart_type_map[pie_chart_type],
+                        etf_classes,  # Class maps to fund_categories
+                        etf_categories  # Category maps to fund_subcategories
+                    )
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                    
+                else:
+                    st.warning("⚠️ Could not calculate portfolio returns. Check that ETFs have price data.")
+            else:
+                st.info("👆 Create and save a portfolio above to see analysis")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECONDARY TAB 2: ETF ANALYSIS
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        with etf_rec_tab2:
+            st.markdown("### 📈 Individual ETF Analysis")
+            
+            if st.session_state.get('etf_recommended_portfolio') and st.session_state.get('etf_recommended_portfolio_saved'):
+                portfolio = st.session_state['etf_recommended_portfolio']
+                etf_list = list(portfolio.keys())
+                
+                selected_etf_analysis = st.selectbox("Select ETF to analyze:", etf_list, key="etf_rec_analysis_select")
+                
+                if selected_etf_analysis and selected_etf_analysis in prices_df.columns:
+                    etf_prices = prices_df[selected_etf_analysis].dropna()
+                    etf_returns = etf_prices.pct_change().dropna()
+                    etf_info = metrics_df.loc[selected_etf_analysis] if selected_etf_analysis in metrics_df.index else {}
+                    
+                    # ETF Info
+                    st.markdown(f"#### {selected_etf_analysis} - {etf_info.get('Name', 'N/A')}")
+                    
+                    info_col1, info_col2, info_col3 = st.columns(3)
+                    with info_col1:
+                        st.metric("Class", etf_info.get('Class', 'N/A'))
+                    with info_col2:
+                        st.metric("Category", etf_info.get('Category', 'N/A'))
+                    with info_col3:
+                        st.metric("Allocation", f"{portfolio[selected_etf_analysis]:.1f}%")
+                    
+                    st.markdown("---")
+                    
+                    # Performance metrics using static methods
+                    total_ret = (1 + etf_returns).prod() - 1
+                    annual_vol = PortfolioMetrics.annualized_volatility(etf_returns)
+                    sharpe_val = PortfolioMetrics.sharpe_ratio(etf_returns)
+                    mdd_val = PortfolioMetrics.max_drawdown(etf_returns)
+                    
+                    met_col1, met_col2, met_col3, met_col4 = st.columns(4)
+                    with met_col1:
+                        st.metric("Total Return", f"{total_ret*100:.2f}%")
+                    with met_col2:
+                        st.metric("Annual Vol", f"{annual_vol*100:.2f}%")
+                    with met_col3:
+                        st.metric("Sharpe", f"{sharpe_val:.2f}")
+                    with met_col4:
+                        st.metric("Max DD", f"{mdd_val*100:.2f}%")
+                    
+                    # Returns chart
+                    st.markdown("#### Cumulative Returns")
+                    etf_cum = (1 + etf_returns).cumprod()
+                    
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=etf_cum.index,
+                        y=(etf_cum - 1) * 100,
+                        name=selected_etf_analysis,
+                        line=dict(color='#D4AF37', width=2)
+                    ))
+                    
+                    fig.update_layout(
+                        xaxis_title="Date",
+                        yaxis_title="Return (%)",
+                        template=PLOTLY_TEMPLATE,
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("👆 Create and save a portfolio in the Portfolio Analysis tab first")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECONDARY TAB 3: BOOK ANALYSIS
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        with etf_rec_tab3:
+            st.markdown("### 📚 Book Analysis")
+            
+            if st.session_state.get('etf_recommended_portfolio') and st.session_state.get('etf_recommended_portfolio_saved'):
+                portfolio = st.session_state['etf_recommended_portfolio']
+                
+                # Create book analysis table
+                book_data = []
+                for ticker, weight in portfolio.items():
+                    if ticker in metrics_df.index:
+                        info = metrics_df.loc[ticker]
+                        
+                        # Get returns data
+                        if ticker in prices_df.columns:
+                            prices = prices_df[ticker].dropna()
+                            rets = prices.pct_change().dropna()
+                            
+                            # Calculate metrics using static methods
+                            total_ret = (1 + rets).prod() - 1
+                            annual_vol = PortfolioMetrics.annualized_volatility(rets)
+                            sharpe_val = PortfolioMetrics.sharpe_ratio(rets)
+                            mdd_val = PortfolioMetrics.max_drawdown(rets)
+                            
+                            book_data.append({
+                                'ETF': ticker,
+                                'Name': info.get('Name', 'N/A'),
+                                'Class': info.get('Class', 'N/A'),
+                                'Weight (%)': weight,
+                                'Return (%)': total_ret * 100,
+                                'Vol (%)': annual_vol * 100,
+                                'Sharpe': sharpe_val,
+                                'Max DD (%)': mdd_val * 100
+                            })
+                
+                if book_data:
+                    book_df = pd.DataFrame(book_data)
+                    
+                    st.dataframe(
+                        book_df.style.format({
+                            'Weight (%)': '{:.1f}',
+                            'Return (%)': '{:.2f}',
+                            'Vol (%)': '{:.2f}',
+                            'Sharpe': '{:.2f}',
+                            'Max DD (%)': '{:.2f}'
+                        }).background_gradient(cmap='RdYlGn', subset=['Return (%)', 'Sharpe']),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    
+                    # Summary
+                    st.markdown("---")
+                    st.markdown("#### Portfolio Summary")
+                    
+                    total_weight = sum(portfolio.values())
+                    st.metric("Total Allocation", f"{total_weight:.1f}%")
+                    st.metric("Number of ETFs", len(portfolio))
+                else:
+                    st.warning("No ETF data available for book analysis")
+            else:
+                st.info("👆 Create and save a portfolio in the Portfolio Analysis tab first")
+    
+    with tabs[5]:
+        st.title("🚨 ETF RISK MONITOR")
+        st.markdown("### Real-time monitoring of ETF returns vs VaR thresholds")
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # ETF RISK MONITOR HELPER FUNCTIONS
+        # ═══════════════════════════════════════════════════════════════════════
+        
+        @st.cache_data(ttl=3600, show_spinner=False)
+        def calculate_etf_rolling_returns(daily_returns_tuple: tuple, window: int) -> tuple:
+            """Calculate rolling window returns for a given window size."""
+            daily_returns = pd.Series(daily_returns_tuple[0], index=pd.to_datetime(daily_returns_tuple[1]))
+            
+            if daily_returns is None or len(daily_returns) < window:
+                return None, None
+            
+            rolling_returns = (1 + daily_returns).rolling(window=window).apply(lambda x: x.prod() - 1, raw=True)
+            rolling_returns = rolling_returns.dropna()
+            
+            if len(rolling_returns) < 10:
+                return None, None
+            
+            return tuple(rolling_returns.values), tuple(rolling_returns.index.astype(str))
+        
+        @st.cache_data(ttl=3600, show_spinner=False)
+        def calculate_etf_risk_metrics(returns_tuple: tuple) -> dict:
+            """Calculate VaR and CVaR at 95% and 5% levels."""
+            if returns_tuple is None or returns_tuple[0] is None:
+                return None
+            
+            returns = pd.Series(returns_tuple[0], index=pd.to_datetime(returns_tuple[1]))
+            
+            if len(returns) < 10:
+                return None
+            
+            returns = returns.dropna()
+            if len(returns) < 10:
+                return None
+            
+            var_95 = np.percentile(returns, 5)
+            cvar_95 = returns[returns <= var_95].mean()
+            var_5 = np.percentile(returns, 95)
+            cvar_5 = returns[returns >= var_5].mean()
+            latest_return = returns.iloc[-1]
+            mean_return = returns.mean()
+            std_return = returns.std()
+            z_score = (latest_return - mean_return) / std_return if std_return > 0 else 0
+            
+            return {
+                'var_95': var_95,
+                'cvar_95': cvar_95,
+                'var_5': var_5,
+                'cvar_5': cvar_5,
+                'return': latest_return,
+                'mean': mean_return,
+                'std': std_return,
+                'z_score': z_score
+            }
+        
+        def get_etf_returns_for_frequency(daily_returns: pd.Series, frequency: str) -> tuple:
+            """Get returns for a specific frequency using rolling windows."""
+            if daily_returns is None or len(daily_returns) == 0:
+                return None, None
+            
+            if frequency == 'daily':
+                return tuple(daily_returns.values), tuple(daily_returns.index.astype(str))
+            elif frequency == 'weekly':
+                daily_tuple = (tuple(daily_returns.values), tuple(daily_returns.index.astype(str)))
+                return calculate_etf_rolling_returns(daily_tuple, window=5)
+            elif frequency == 'monthly':
+                daily_tuple = (tuple(daily_returns.values), tuple(daily_returns.index.astype(str)))
+                return calculate_etf_rolling_returns(daily_tuple, window=22)
+            
+            return tuple(daily_returns.values), tuple(daily_returns.index.astype(str))
+        
+        def get_return_status_emoji(return_val, var_95, var_5):
+            """Get emoji based on return position relative to VaR thresholds."""
+            if return_val is None or var_95 is None or var_5 is None:
+                return "⬜"
+            if return_val <= var_95:
+                return "🔴"
+            elif return_val >= var_5:
+                return "🟢"
+            else:
+                return "🟡"
+        
+        def get_combined_status_emoji(statuses):
+            """Get combined status emoji from list of individual statuses."""
+            if '🔴' in statuses:
+                return "‼️"
+            elif '🟢' in statuses:
+                return "✅"
+            else:
+                return "🆗"
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # ETF SELECTION FOR MONITORING
+        # ═══════════════════════════════════════════════════════════════════════
+        
+        if 'etf_monitor_list' not in st.session_state:
+            st.session_state['etf_monitor_list'] = []
+        
+        st.markdown("#### 📋 Select ETFs to Monitor")
+        
+        quick_col1, quick_col2 = st.columns(2)
+        
+        with quick_col1:
+            if st.button("📊 Add from Recommended Portfolio", key="etf_add_from_rec"):
+                if st.session_state.get('etf_recommended_portfolio'):
+                    for ticker in st.session_state['etf_recommended_portfolio'].keys():
+                        if ticker not in st.session_state['etf_monitor_list']:
+                            st.session_state['etf_monitor_list'].append(ticker)
+                    st.rerun()
+        
+        with quick_col2:
+            if st.button("🗑️ Clear All", key="etf_clear_monitor"):
+                st.session_state['etf_monitor_list'] = []
+                st.rerun()
+        
+        available_etfs = [t for t in metrics_df.index.tolist() if t not in st.session_state['etf_monitor_list']]
+        
+        sel_col1, sel_col2 = st.columns([3, 1])
+        with sel_col1:
+            selected_etf_monitor = st.selectbox("Add ETF:", available_etfs if available_etfs else ['No ETFs available'], key="etf_monitor_select")
+        with sel_col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("➕ Add", key="etf_monitor_add") and selected_etf_monitor != 'No ETFs available':
+                st.session_state['etf_monitor_list'].append(selected_etf_monitor)
+                st.rerun()
+        
+        if st.session_state['etf_monitor_list']:
+            st.markdown(f"**Monitoring {len(st.session_state['etf_monitor_list'])} ETFs:**")
+            
+            cols_per_row = 4
+            for i in range(0, len(st.session_state['etf_monitor_list']), cols_per_row):
+                cols = st.columns(cols_per_row)
+                for j, col in enumerate(cols):
+                    idx = i + j
+                    if idx < len(st.session_state['etf_monitor_list']):
+                        ticker = st.session_state['etf_monitor_list'][idx]
+                        with col:
+                            c1, c2 = st.columns([3, 1])
+                            with c1:
+                                st.text(ticker)
+                            with c2:
+                                if st.button("❌", key=f"etf_rm_{ticker}"):
+                                    st.session_state['etf_monitor_list'].remove(ticker)
+                                    st.rerun()
+        
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # SUPABASE ETF MONITOR STORAGE
+        # ═══════════════════════════════════════════════════════════════════════
+        
+        with st.expander("☁️ Save/Load Monitor Configuration", expanded=False):
+            supabase_client = get_supabase_client()
+            
+            if not SUPABASE_AVAILABLE or not supabase_client:
+                st.info("Configure Supabase to save monitor configurations")
+                st.code("""
+-- SQL to create the etf_risk_monitor_funds table in Supabase
+CREATE TABLE etf_risk_monitor_funds (
+    id BIGSERIAL PRIMARY KEY,
+    monitor_name TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    etf_list JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(monitor_name, user_id)
+);
+
+CREATE INDEX idx_etf_risk_monitor_user_id ON etf_risk_monitor_funds(user_id);
+                """, language="sql")
+            else:
+                current_user = st.session_state.get('username', 'default')
+                
+                save_col, load_col = st.columns(2)
+                
+                with save_col:
+                    st.markdown("##### 💾 Save Configuration")
+                    if st.session_state['etf_monitor_list']:
+                        save_name = st.text_input("Config Name:", value="ETF_Monitor_Default", key="etf_monitor_save_name")
+                        if st.button("☁️ Save", key="etf_monitor_save_btn"):
+                            try:
+                                data = {
+                                    'user_id': current_user,
+                                    'monitor_name': save_name,
+                                    'etf_list': st.session_state['etf_monitor_list'],
+                                    'updated_at': datetime.now().isoformat()
+                                }
+                                supabase_client.table('etf_risk_monitor_funds').upsert(
+                                    data, on_conflict='user_id,monitor_name'
+                                ).execute()
+                                st.success(f"✅ Saved '{save_name}'")
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+                
+                with load_col:
+                    st.markdown("##### 📂 Load Configuration")
+                    try:
+                        result = supabase_client.table('etf_risk_monitor_funds').select('*').eq('user_id', current_user).execute()
+                        saved_configs = result.data if result.data else []
+                    except:
+                        saved_configs = []
+                    
+                    if saved_configs:
+                        config_options = [c['monitor_name'] for c in saved_configs]
+                        selected_config = st.selectbox("Select:", config_options, key="etf_monitor_load_select")
+                        if st.button("📥 Load", key="etf_monitor_load_btn"):
+                            for c in saved_configs:
+                                if c['monitor_name'] == selected_config:
+                                    st.session_state['etf_monitor_list'] = c['etf_list']
+                                    st.rerun()
+        
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # RISK MONITOR DISPLAY
+        # ═══════════════════════════════════════════════════════════════════════
+        
+        if not st.session_state['etf_monitor_list']:
+            st.info("👆 Add ETFs above to start monitoring")
+        else:
+            view_tab1, view_tab2, view_tab3 = st.tabs(["📊 Summary View", "📈 Returns Analysis", "📉 Distribution Charts"])
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # SUMMARY VIEW
+            # ═══════════════════════════════════════════════════════════════════
+            
+            with view_tab1:
+                st.markdown("### 📊 Risk Monitor Summary")
+                
+                summary_data = []
+                
+                for ticker in st.session_state['etf_monitor_list']:
+                    if ticker not in prices_df.columns:
+                        continue
+                    
+                    etf_prices = prices_df[ticker].dropna()
+                    daily_returns = etf_prices.pct_change().dropna()
+                    
+                    if len(daily_returns) < 30:
+                        continue
+                    
+                    etf_info = metrics_df.loc[ticker] if ticker in metrics_df.index else {}
+                    
+                    daily_tuple = get_etf_returns_for_frequency(daily_returns, 'daily')
+                    weekly_tuple = get_etf_returns_for_frequency(daily_returns, 'weekly')
+                    monthly_tuple = get_etf_returns_for_frequency(daily_returns, 'monthly')
+                    
+                    daily_metrics = calculate_etf_risk_metrics(daily_tuple)
+                    weekly_metrics = calculate_etf_risk_metrics(weekly_tuple)
+                    monthly_metrics = calculate_etf_risk_metrics(monthly_tuple)
+                    
+                    daily_status = get_return_status_emoji(
+                        daily_metrics['return'] if daily_metrics else None,
+                        daily_metrics['var_95'] if daily_metrics else None,
+                        daily_metrics['var_5'] if daily_metrics else None
+                    )
+                    weekly_status = get_return_status_emoji(
+                        weekly_metrics['return'] if weekly_metrics else None,
+                        weekly_metrics['var_95'] if weekly_metrics else None,
+                        weekly_metrics['var_5'] if weekly_metrics else None
+                    )
+                    monthly_status = get_return_status_emoji(
+                        monthly_metrics['return'] if monthly_metrics else None,
+                        monthly_metrics['var_95'] if monthly_metrics else None,
+                        monthly_metrics['var_5'] if monthly_metrics else None
+                    )
+                    
+                    combined_status = get_combined_status_emoji([daily_status, weekly_status, monthly_status])
+                    
+                    summary_data.append({
+                        'Status': combined_status,
+                        'ETF': ticker,
+                        'Name': etf_info.get('Name', 'N/A')[:30] if isinstance(etf_info.get('Name', 'N/A'), str) else 'N/A',
+                        'Daily': f"{daily_status} {daily_metrics['return']*100:.2f}%" if daily_metrics else "N/A",
+                        'Weekly': f"{weekly_status} {weekly_metrics['return']*100:.2f}%" if weekly_metrics else "N/A",
+                        'Monthly': f"{monthly_status} {monthly_metrics['return']*100:.2f}%" if monthly_metrics else "N/A",
+                        'Daily Z': f"{daily_metrics['z_score']:.2f}" if daily_metrics else "N/A",
+                    })
+                
+                if summary_data:
+                    summary_df = pd.DataFrame(summary_data)
+                    st.dataframe(summary_df, use_container_width=True, hide_index=True, height=400)
+                    
+                    st.markdown("---")
+                    st.markdown("""
+                    **Legend:**
+                    - 🔴 Below VaR(95%) - Significant negative return
+                    - 🟡 Within normal range
+                    - 🟢 Above VaR(5%) - Significant positive return
+                    - ‼️ Alert: At least one metric in danger zone
+                    - ✅ Good: At least one metric performing well
+                    - 🆗 Normal: All metrics within expected range
+                    """)
+                else:
+                    st.warning("No data available for selected ETFs")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # RETURNS ANALYSIS VIEW
+            # ═══════════════════════════════════════════════════════════════════
+            
+            with view_tab2:
+                st.markdown("### 📈 Returns Analysis")
+                
+                analysis_etf = st.selectbox(
+                    "Select ETF for detailed analysis:",
+                    st.session_state['etf_monitor_list'],
+                    key="etf_returns_analysis_select"
+                )
+                
+                if analysis_etf and analysis_etf in prices_df.columns:
+                    etf_prices = prices_df[analysis_etf].dropna()
+                    daily_returns = etf_prices.pct_change().dropna()
+                    
+                    freq_choice = st.radio(
+                        "Frequency:",
+                        ['Daily', 'Weekly', 'Monthly'],
+                        horizontal=True,
+                        key="etf_returns_freq"
+                    )
+                    
+                    freq_map = {'Daily': 'daily', 'Weekly': 'weekly', 'Monthly': 'monthly'}
+                    returns_tuple = get_etf_returns_for_frequency(daily_returns, freq_map[freq_choice])
+                    
+                    if returns_tuple and returns_tuple[0]:
+                        returns_series = pd.Series(returns_tuple[0], index=pd.to_datetime(returns_tuple[1]))
+                        metrics = calculate_etf_risk_metrics(returns_tuple)
+                        
+                        if metrics:
+                            # Metrics display
+                            met_col1, met_col2, met_col3, met_col4 = st.columns(4)
+                            
+                            with met_col1:
+                                st.metric(
+                                    f"Latest {freq_choice} Return",
+                                    f"{metrics['return']*100:.2f}%",
+                                    delta=f"Z: {metrics['z_score']:.2f}"
+                                )
+                            
+                            with met_col2:
+                                st.metric("VaR (95%)", f"{metrics['var_95']*100:.2f}%")
+                            
+                            with met_col3:
+                                st.metric("CVaR (95%)", f"{metrics['cvar_95']*100:.2f}%")
+                            
+                            with met_col4:
+                                st.metric("VaR (5%)", f"{metrics['var_5']*100:.2f}%")
+                            
+                            st.markdown("---")
+                            
+                            # Returns time series chart with VaR bands
+                            fig = go.Figure()
+                            
+                            # Returns line
+                            fig.add_trace(go.Scatter(
+                                x=returns_series.index,
+                                y=returns_series.values * 100,
+                                name=f'{freq_choice} Returns',
+                                line=dict(color='#D4AF37', width=1),
+                                hovertemplate='%{y:.2f}%<extra></extra>'
+                            ))
+                            
+                            # VaR bands
+                            fig.add_hline(
+                                y=metrics['var_95']*100,
+                                line=dict(color='red', width=2, dash='dash'),
+                                annotation_text=f"VaR(95%): {metrics['var_95']*100:.2f}%"
+                            )
+                            fig.add_hline(
+                                y=metrics['var_5']*100,
+                                line=dict(color='green', width=2, dash='dash'),
+                                annotation_text=f"VaR(5%): {metrics['var_5']*100:.2f}%"
+                            )
+                            fig.add_hline(
+                                y=metrics['mean']*100,
+                                line=dict(color='#00CED1', width=1, dash='dot'),
+                                annotation_text=f"Mean: {metrics['mean']*100:.2f}%"
+                            )
+                            
+                            fig.update_layout(
+                                title=f"{analysis_etf} - {freq_choice} Returns with VaR Thresholds",
+                                xaxis_title="Date",
+                                yaxis_title="Return (%)",
+                                template=PLOTLY_TEMPLATE,
+                                height=450,
+                                showlegend=True
+                            )
+                            
+                            st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning("Insufficient data for analysis")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # DISTRIBUTION CHARTS VIEW
+            # ═══════════════════════════════════════════════════════════════════
+            
+            with view_tab3:
+                st.markdown("### 📉 Return Distribution Analysis")
+                
+                dist_etf = st.selectbox(
+                    "Select ETF:",
+                    st.session_state['etf_monitor_list'],
+                    key="etf_dist_select"
+                )
+                
+                if dist_etf and dist_etf in prices_df.columns:
+                    etf_prices = prices_df[dist_etf].dropna()
+                    daily_returns = etf_prices.pct_change().dropna()
+                    
+                    dist_freq = st.radio(
+                        "Frequency:",
+                        ['Daily', 'Weekly', 'Monthly'],
+                        horizontal=True,
+                        key="etf_dist_freq"
+                    )
+                    
+                    freq_map = {'Daily': 'daily', 'Weekly': 'weekly', 'Monthly': 'monthly'}
+                    returns_tuple = get_etf_returns_for_frequency(daily_returns, freq_map[dist_freq])
+                    
+                    if returns_tuple and returns_tuple[0]:
+                        returns_series = pd.Series(returns_tuple[0], index=pd.to_datetime(returns_tuple[1]))
+                        metrics = calculate_etf_risk_metrics(returns_tuple)
+                        
+                        if metrics:
+                            # Histogram with VaR lines
+                            fig = go.Figure()
+                            
+                            fig.add_trace(go.Histogram(
+                                x=returns_series.values * 100,
+                                nbinsx=50,
+                                name='Returns',
+                                marker_color='#D4AF37',
+                                opacity=0.7
+                            ))
+                            
+                            # Add VaR lines
+                            fig.add_vline(
+                                x=metrics['var_95']*100,
+                                line=dict(color='red', width=2, dash='dash'),
+                                annotation_text=f"VaR(95%)"
+                            )
+                            fig.add_vline(
+                                x=metrics['cvar_95']*100,
+                                line=dict(color='darkred', width=2, dash='dot'),
+                                annotation_text=f"CVaR(95%)"
+                            )
+                            fig.add_vline(
+                                x=metrics['var_5']*100,
+                                line=dict(color='green', width=2, dash='dash'),
+                                annotation_text=f"VaR(5%)"
+                            )
+                            fig.add_vline(
+                                x=metrics['return']*100,
+                                line=dict(color='#00CED1', width=3),
+                                annotation_text=f"Latest: {metrics['return']*100:.2f}%"
+                            )
+                            
+                            fig.update_layout(
+                                title=f"{dist_etf} - {dist_freq} Returns Distribution",
+                                xaxis_title="Return (%)",
+                                yaxis_title="Frequency",
+                                template=PLOTLY_TEMPLATE,
+                                height=450,
+                                showlegend=False
+                            )
+                            
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Distribution statistics
+                            st.markdown("#### Distribution Statistics")
+                            
+                            stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+                            
+                            with stat_col1:
+                                st.metric("Mean", f"{returns_series.mean()*100:.3f}%")
+                            with stat_col2:
+                                st.metric("Std Dev", f"{returns_series.std()*100:.3f}%")
+                            with stat_col3:
+                                skew = returns_series.skew()
+                                st.metric("Skewness", f"{skew:.3f}")
+                            with stat_col4:
+                                kurt = returns_series.kurtosis()
+                                st.metric("Kurtosis", f"{kurt:.3f}")
+                    else:
+                        st.warning("Insufficient data for distribution analysis")
+
+
+
 def main():
     # Check authentication
     if 'authenticated' not in st.session_state:
@@ -2997,6 +6067,26 @@ def main():
     
     # Add logout button to sidebar
     logout_button()
+    
+    # System Selector
+    with st.sidebar:
+        st.markdown("---")
+        st.header("⚙️ System Selection")
+        
+        system_type = st.radio(
+            "Select System:",
+            options=['📈 Investment Funds', '📊 ETFs'],
+            index=0,
+            help="Choose between Brazilian Investment Funds or US ETF analysis"
+        )
+        
+        st.markdown("---")
+    
+    # Early return for ETF system (OUTSIDE sidebar)
+    if system_type == '📊 ETFs':
+        run_etf_system()
+        return  # Exit main() here, don't run Investment Funds code
+
 
     # Sidebar - Data Source Selection
     with st.sidebar:
@@ -3326,68 +6416,6 @@ def main():
                 st.plotly_chart(fig_returns, use_container_width=True)
                 
                 # Returns comparison table
-                st.markdown("#### Returns Comparison")
-                returns_table = create_returns_comparison_table(
-                    fund_info, fund_name, benchmarks, fund_returns_full, selected_benchmarks
-                )
-                st.dataframe(returns_table, use_container_width=True, hide_index=True)
-                
-                # Monthly statistics
-                st.markdown("#### Monthly Statistics")
-                
-                # Calculate total months from fund returns
-                total_months = len(fund_returns_full.resample('M').apply(lambda x: (1 + x).prod() - 1))
-                
-                # Get monthly return series for calculations
-                monthly_returns = fund_returns_full.resample('M').apply(lambda x: (1 + x).prod() - 1)
-                
-                # Calculate months above/below zero
-                months_above_zero = (monthly_returns > 0).sum()
-                months_below_zero = (monthly_returns <= 0).sum()
-                pct_above_zero = months_above_zero / total_months if total_months > 0 else 0
-                pct_below_zero = months_below_zero / total_months if total_months > 0 else 0
-                
-                # Calculate months above/below benchmark (use first selected benchmark or CDI)
-                if selected_benchmarks and benchmarks is not None:
-                    bench_name = selected_benchmarks[0]
-                    if bench_name in benchmarks.columns:
-                        aligned_bench = benchmarks[bench_name].reindex(fund_returns_full.index, method='ffill').fillna(0)
-                        monthly_bench = aligned_bench.resample('M').apply(lambda x: (1 + x).prod() - 1)
-                        
-                        months_above_bench = (monthly_returns > monthly_bench).sum()
-                        months_below_bench = (monthly_returns <= monthly_bench).sum()
-                        pct_above_bench = months_above_bench / total_months if total_months > 0 else 0
-                        pct_below_bench = months_below_bench / total_months if total_months > 0 else 0
-                    else:
-                        months_above_bench = months_below_bench = np.nan
-                        pct_above_bench = pct_below_bench = np.nan
-                else:
-                    months_above_bench = months_below_bench = np.nan
-                    pct_above_bench = pct_below_bench = np.nan
-                
-                # Get best and worst month
-                best_month = fund_info.get('BEST_MONTH', np.nan)
-                worst_month = fund_info.get('WORST_MONTH', np.nan)
-                
-                # Create the monthly statistics dictionary with new format
-                monthly_data = {
-                    'Months Above Zero': f"{months_above_zero} ({pct_above_zero*100:.1f}%)",
-                    'Months Below Zero': f"{months_below_zero} ({pct_below_zero*100:.1f}%)",
-                }
-                
-                if pd.notna(months_above_bench):
-                    monthly_data['Months Above Benchmark'] = f"{int(months_above_bench)} ({pct_above_bench*100:.1f}%)"
-                    monthly_data['Months Below Benchmark'] = f"{int(months_below_bench)} ({pct_below_bench*100:.1f}%)"
-                
-                monthly_data['Best Month'] = f"{best_month*100:.2f}%" if pd.notna(best_month) else "N/A"
-                monthly_data['Worst Month'] = f"{worst_month*100:.2f}%" if pd.notna(worst_month) else "N/A"
-                
-                if monthly_data:
-                    monthly_df = pd.DataFrame([monthly_data])
-                    st.dataframe(monthly_df, use_container_width=True, hide_index=True)
-                
-                # Monthly Returns Calendar
-                st.markdown("---")
                 st.markdown("#### Monthly Returns Calendar")
                 
                 # Benchmark and comparison method selection
@@ -4905,7 +7933,7 @@ def main():
                     edited_cat_df = st.data_editor(
                         individual_cat_df,
                         column_config={
-                            "Category": st.column_config.TextColumn("Category Name", disabled=True),
+                            "Category": st.column_config.TextColumn("Class", disabled=True),
                             "Min Weight (%)": st.column_config.NumberColumn(
                                 "Min Weight (%)",
                                 min_value=0.0,
@@ -4939,7 +7967,7 @@ def main():
                     # Show summary
                     active_cat_count = len(st.session_state['individual_category_constraints'])
                     if active_cat_count > 0:
-                        st.success(f"✅ {active_cat_count} categories have individual constraints")
+                        st.success(f"✅ {active_cat_count} asset classes have individual constraints")
                     else:
                         st.info("ℹ️ No individual category constraints active (using global constraints)")
                 else:
@@ -6302,94 +9330,6 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
                             # ═══════════════════════════════════════════════════════════════════
                             # RETURNS COMPARISON TABLE
                             # ═══════════════════════════════════════════════════════════════════
-                            
-                            st.markdown("#### Returns Comparison")
-                            
-                            periods = ['MTD', '3M', '6M', 'YTD', '12M', '24M', '36M', 'TOTAL']
-                            returns_data = []
-                            
-                            # Portfolio row
-                            port_row = {'Asset': 'Recommended Portfolio'}
-                            for period in periods:
-                                if period == 'MTD':
-                                    pr = portfolio_returns[portfolio_returns.index >= portfolio_returns.index[-1].replace(day=1)]
-                                elif period == 'YTD':
-                                    pr = portfolio_returns[portfolio_returns.index >= portfolio_returns.index[-1].replace(month=1, day=1)]
-                                elif period == 'TOTAL':
-                                    pr = portfolio_returns
-                                else:
-                                    months = int(period.replace('M', ''))
-                                    pr = portfolio_returns.tail(months * 21)
-                                port_row[f'Return {period}'] = (1 + pr).prod() - 1 if len(pr) > 0 else np.nan
-                            returns_data.append(port_row)
-                            
-                            # Benchmark rows
-                            for bench_name in selected_benchmarks:
-                                if bench_name in benchmarks.columns:
-                                    bench_row = {'Asset': bench_name}
-                                    bench_data = benchmarks[bench_name].reindex(portfolio_returns.index, method='ffill').fillna(0)
-                                    for period in periods:
-                                        if period == 'MTD':
-                                            br = bench_data[bench_data.index >= bench_data.index[-1].replace(day=1)]
-                                        elif period == 'YTD':
-                                            br = bench_data[bench_data.index >= bench_data.index[-1].replace(month=1, day=1)]
-                                        elif period == 'TOTAL':
-                                            br = bench_data
-                                        else:
-                                            months = int(period.replace('M', ''))
-                                            br = bench_data.tail(months * 21)
-                                        bench_row[f'Return {period}'] = (1 + br).prod() - 1 if len(br) > 0 else np.nan
-                                    returns_data.append(bench_row)
-                            
-                            returns_df = pd.DataFrame(returns_data)
-                            for col in returns_df.columns:
-                                if col != 'Asset':
-                                    returns_df[col] = returns_df[col].apply(lambda x: f"{x*100:.2f}%" if pd.notna(x) else "N/A")
-                            st.dataframe(returns_df, use_container_width=True, hide_index=True)
-                            
-                            # ═══════════════════════════════════════════════════════════════════
-                            # MONTHLY STATISTICS
-                            # ═══════════════════════════════════════════════════════════════════
-                            
-                            st.markdown("#### Monthly Statistics")
-                            
-                            monthly_returns = portfolio_returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
-                            total_months = len(monthly_returns)
-                            
-                            months_above_zero = (monthly_returns > 0).sum()
-                            months_below_zero = (monthly_returns <= 0).sum()
-                            pct_above_zero = months_above_zero / total_months if total_months > 0 else 0
-                            pct_below_zero = months_below_zero / total_months if total_months > 0 else 0
-                            
-                            # Calculate vs benchmark
-                            if selected_benchmarks and benchmarks is not None:
-                                bench_name = selected_benchmarks[0]
-                                if bench_name in benchmarks.columns:
-                                    aligned_bench = benchmarks[bench_name].reindex(portfolio_returns.index, method='ffill').fillna(0)
-                                    monthly_bench = aligned_bench.resample('M').apply(lambda x: (1 + x).prod() - 1)
-                                    months_above_bench = (monthly_returns > monthly_bench).sum()
-                                    months_below_bench = (monthly_returns <= monthly_bench).sum()
-                                    pct_above_bench = months_above_bench / total_months if total_months > 0 else 0
-                                    pct_below_bench = months_below_bench / total_months if total_months > 0 else 0
-                                else:
-                                    months_above_bench = months_below_bench = pct_above_bench = pct_below_bench = np.nan
-                            else:
-                                months_above_bench = months_below_bench = pct_above_bench = pct_below_bench = np.nan
-                            
-                            best_month = monthly_returns.max()
-                            worst_month = monthly_returns.min()
-                            
-                            monthly_data = {
-                                'Months Above Zero': f"{months_above_zero} ({pct_above_zero*100:.1f}%)",
-                                'Months Below Zero': f"{months_below_zero} ({pct_below_zero*100:.1f}%)",
-                            }
-                            if pd.notna(months_above_bench):
-                                monthly_data['Months Above Benchmark'] = f"{int(months_above_bench)} ({pct_above_bench*100:.1f}%)"
-                                monthly_data['Months Below Benchmark'] = f"{int(months_below_bench)} ({pct_below_bench*100:.1f}%)"
-                            monthly_data['Best Month'] = f"{best_month*100:.2f}%"
-                            monthly_data['Worst Month'] = f"{worst_month*100:.2f}%"
-                            
-                            st.dataframe(pd.DataFrame([monthly_data]), use_container_width=True, hide_index=True)
                             
                             # ═══════════════════════════════════════════════════════════════════
                             # LIQUIDITY BREAKDOWN
@@ -8774,6 +11714,3 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
 
 if __name__ == "__main__":
     main()
-
-
-
