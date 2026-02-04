@@ -383,7 +383,7 @@ def load_excel_from_github(asset_name: str, _release_id: str = None) -> Optional
         return None
     
     try:
-        df = pd.read_excel(io.BytesIO(content), index_col=0)
+        df = pd.read_excel(io.BytesIO(content))
         return df
     except Exception as e:
         st.error(f"Error reading {asset_name}: {e}")
