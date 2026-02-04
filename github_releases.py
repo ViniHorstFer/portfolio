@@ -447,14 +447,18 @@ def load_fund_metrics_from_github() -> Optional[pd.DataFrame]:
         )
         
         if df is not None:
-            # Validate that this is Investment Funds data
-            expected_cols = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR']
-            has_expected = any(col in df.columns for col in expected_cols)
+            # Simple validation: Check this isn't ETF data
+            # ETF data has English columns, Funds data has Portuguese columns
+            etf_indicators = ['Class', 'Category'] 
+            has_etf_cols = any(col in df.columns for col in etf_indicators)
             
-            if not has_expected:
-                st.error(f"❌ File '{RELEASE_FILE_NAMES['fund_metrics']}' doesn't appear to be Investment Funds data")
-                st.warning("It might be ETF/Assets data. Please check your GitHub Release files.")
-                st.info(f"Found columns: {', '.join(df.columns.tolist()[:10])}")
+            # Investment Funds should have Portuguese columns
+            funds_indicators = ['CNPJ', 'GESTOR', 'CATEGORIA BTG']
+            has_funds_cols = any(col in df.columns for col in funds_indicators)
+            
+            if has_etf_cols and not has_funds_cols:
+                st.error(f"❌ File '{RELEASE_FILE_NAMES['fund_metrics']}' appears to be ETF data, not Investment Funds data")
+                st.info("Expected Portuguese columns (CNPJ, GESTOR, etc.) but found English columns (Class, Category, etc.)")
                 return None
             
             st.session_state[CACHE_KEYS['fund_metrics']] = df
@@ -525,18 +529,14 @@ def load_assets_metrics_from_github() -> Optional[pd.DataFrame]:
         )
         
         if df is not None:
-            # Validate that this is ETF/Assets data
-            expected_cols = ['Name', 'Class', 'Category']  # ETF typical columns
-            has_expected = any(col in df.columns for col in expected_cols)
+            # Simple validation: Check this isn't Investment Funds data
+            # Investment Funds have Portuguese columns, ETF has English
+            funds_indicators = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR']
+            has_funds_cols = any(col in df.columns for col in funds_indicators)
             
-            # Also check it's NOT Investment Funds data
-            wrong_cols = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR']
-            has_wrong = any(col in df.columns for col in wrong_cols)
-            
-            if has_wrong:
-                st.error(f"❌ File '{RELEASE_FILE_NAMES['assets_metrics']}' appears to be Investment Funds data, not ETF/Assets data")
-                st.warning("Please check your GitHub Release files - you may have uploaded the wrong file.")
-                st.info(f"Found columns: {', '.join(df.columns.tolist()[:10])}")
+            if has_funds_cols:
+                st.error(f"❌ File '{RELEASE_FILE_NAMES['assets_metrics']}' appears to be Investment Funds data, not ETF data")
+                st.info("Expected English columns (Name, Class, Category) but found Portuguese columns (FUNDO DE INVESTIMENTO, CNPJ, GESTOR)")
                 return None
             
             st.session_state[CACHE_KEYS['assets_metrics']] = df
