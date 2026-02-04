@@ -6383,7 +6383,7 @@ def main():
             
             if not available_cols:
                 st.warning("⚠️ Expected columns not found in fund metrics data. Please check your data file.")
-                st.info(f"Available columns: {', '.join(fund_metrics.columns.tolist()[:10])}...")
+                st.info(f"Available columns: {', '.join(fund_metrics.columns.tolist())}...")
                 return
             
             fund_list = fund_metrics[available_cols].copy()
@@ -11888,3 +11888,4 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
 
 if __name__ == "__main__":
     main()
+
