@@ -6378,7 +6378,15 @@ def main():
                            'SUBCATEGORIA BTG', 'STATUS', 'LAST_UPDATE', 'VL_PATRIM_LIQ', 
                            'NR_COTST']
             
-            fund_list = fund_metrics[display_cols].copy()
+            # Filter to only columns that exist in the DataFrame
+            available_cols = [col for col in display_cols if col in fund_metrics.columns]
+            
+            if not available_cols:
+                st.warning("⚠️ Expected columns not found in fund metrics data. Please check your data file.")
+                st.info(f"Available columns: {', '.join(fund_metrics.columns.tolist()[:10])}...")
+                return
+            
+            fund_list = fund_metrics[available_cols].copy()
             
             if 'VL_PATRIM_LIQ' in fund_list.columns:
                 fund_list['VL_PATRIM_LIQ'] = fund_list['VL_PATRIM_LIQ'].apply(
@@ -7345,6 +7353,8 @@ def main():
         # Define column categories for easier selection
         basic_info_cols = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR', 'CATEGORIA BTG', 
                           'SUBCATEGORIA BTG', 'STATUS', 'VL_PATRIM_LIQ', 'NR_COTST', 'TRIBUTAÇÃO', 'LIQUIDEZ', 'SUITABILITY']
+        # Filter to only existing columns
+        basic_info_cols = [col for col in basic_info_cols if col in fund_metrics.columns]
         
         return_cols = [col for col in fund_metrics.columns if 'RETURN' in col] + \
                       [col for col in fund_metrics.columns if 'EXCESS' in col]
@@ -7352,14 +7362,23 @@ def main():
         risk_cols = ['VOL_12M', 'VOL_24M', 'VOL_36M', 'VOL_TOTAL', 
                     'SHARPE_12M', 'SHARPE_24M', 'SHARPE_36M', 'SHARPE_TOTAL',
                     'MDD', 'CDAR_95', 'MDD_DAYS']
+        # Filter to only existing columns
+        risk_cols = [col for col in risk_cols if col in fund_metrics.columns]
         
         advanced_cols = ['OMEGA_DAILY', 'OMEGA_MONTHLY', 'OMEGA_WEEKLY', 'RACHEV_DAILY', 'RACHEV_MONTHLY', 'RACHEV_WEEKLY',
                         'VAR_95_D', 'VAR_95_M', 'CVAR_95_D', 'CVAR_95_M']
+        # Filter to only existing columns
+        advanced_cols = [col for col in advanced_cols if col in fund_metrics.columns]
         
         exposure_cols = [col for col in fund_metrics.columns if any(x in col for x in 
                         ['KENDALL_TAU', 'TAIL_LOWER', 'TAIL_UPPER', 'ASYMMETRY'])]
         
         monthly_cols = ['M_ABOVE_0', 'M_ABOVE_BCHMK', 'BEST_MONTH', 'WORST_MONTH']
+        # Filter to only existing columns
+        monthly_cols = [col for col in monthly_cols if col in fund_metrics.columns]
+        
+        # Set safe defaults
+        default_basic = [col for col in ['FUNDO DE INVESTIMENTO', 'CATEGORIA BTG', 'SUBCATEGORIA BTG', 'STATUS','VL_PATRIM_LIQ', 'NR_COTST'] if col in basic_info_cols]
         
         col1, col2, col3 = st.columns(3)
         
@@ -7367,7 +7386,7 @@ def main():
             selected_basic = st.multiselect(
                 "Basic Information",
                 options=basic_info_cols,
-                default=['FUNDO DE INVESTIMENTO', 'CATEGORIA BTG', 'SUBCATEGORIA BTG', 'STATUS','VL_PATRIM_LIQ', 'NR_COTST']
+                default=default_basic
             )
         
         with col2:
@@ -7414,6 +7433,14 @@ def main():
             st.warning("⚠️ Please select at least one column to display")
             return
         
+        # Filter to only columns that exist in the DataFrame
+        available_selected_cols = [col for col in all_selected_cols if col in fund_metrics.columns]
+        
+        if not available_selected_cols:
+            st.warning("⚠️ None of the selected columns were found in the fund metrics data.")
+            st.info(f"Available columns: {', '.join(fund_metrics.columns.tolist()[:20])}...")
+            return
+        
         st.markdown("---")
         
         # ═══════════════════════════════════════════════════════════════════════
@@ -7423,7 +7450,7 @@ def main():
         st.markdown("#### 🔎 Filter Funds")
 
         # Create a copy of the dataframe with selected columns
-        display_df = fund_metrics[all_selected_cols].copy()
+        display_df = fund_metrics[available_selected_cols].copy()
         
         # Clean Liquidez column if present - extract numeric days from D+N format
         if 'LIQUIDEZ' in display_df.columns:
