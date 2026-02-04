@@ -7012,20 +7012,6 @@ CREATE POLICY "Allow all operations" ON etf_recommended_portfolios
                 if st.button("💾 Save List", key="etf_risk_save_sel") and st.session_state['etf_risk_temp_list']:
                     st.session_state['etf_risk_monitor_list'] = st.session_state['etf_risk_temp_list'].copy()
                     st.rerun()
-            
-            if st.session_state['etf_risk_temp_list']:
-                st.markdown(f"**Current selection ({len(st.session_state['etf_risk_temp_list'])} ETFs):**")
-                cols_per_row = 6
-                for i in range(0, len(st.session_state['etf_risk_temp_list']), cols_per_row):
-                    cols = st.columns(cols_per_row)
-                    for j, col in enumerate(cols):
-                        idx = i + j
-                        if idx < len(st.session_state['etf_risk_temp_list']):
-                            ticker = st.session_state['etf_risk_temp_list'][idx]
-                            with col:
-                                if st.button(f"❌ {ticker}", key=f"etf_risk_rm_{ticker}"):
-                                    st.session_state['etf_risk_temp_list'].remove(ticker)
-                                    st.rerun()
         
         st.markdown("---")
         
@@ -13274,3 +13260,4 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
 
 if __name__ == "__main__":
     main()
+
