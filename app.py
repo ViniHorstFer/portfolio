@@ -7213,9 +7213,9 @@ CREATE INDEX idx_etf_risk_monitor_funds_user_id ON etf_risk_monitor_funds(user_i
                             d_var5 = daily_m['var_5'] * 100
                             d_circle = get_status_circle(daily_m['return'], daily_m['var_95'], daily_m['var_5'])
                             d_color = get_return_color_html(daily_m['return'], daily_m['var_95'], daily_m['var_5'])
-                            html += f'<td style="padding: 6px 8px; text-align: center; color: #FF6666; font-size: 11px;">{d_var95:.2f}%</td>'
+                            html += f'<td style="padding: 6px 8px; text-align: center; color: #FFFFFF; font-size: 11px;">{d_var95:.2f}%</td>'
                             html += f'<td style="padding: 6px 8px; text-align: center; color: {d_color}; font-size: 11px;">{d_circle} {d_ret:.2f}%</td>'
-                            html += f'<td style="padding: 6px 8px; text-align: center; color: #66FF66; font-size: 11px; border-right: 2px solid #555;">{d_var5:.2f}%</td>'
+                            html += f'<td style="padding: 6px 8px; text-align: center; color: #FFFFFF; font-size: 11px; border-right: 2px solid #555;">{d_var5:.2f}%</td>'
                         else:
                             html += '<td style="padding: 6px 8px; text-align: center; color: #555; font-size: 11px;">-</td>'
                             html += '<td style="padding: 6px 8px; text-align: center; color: #555; font-size: 11px;">-</td>'
@@ -7228,9 +7228,9 @@ CREATE INDEX idx_etf_risk_monitor_funds_user_id ON etf_risk_monitor_funds(user_i
                             w_var5 = weekly_m['var_5'] * 100
                             w_circle = get_status_circle(weekly_m['return'], weekly_m['var_95'], weekly_m['var_5'])
                             w_color = get_return_color_html(weekly_m['return'], weekly_m['var_95'], weekly_m['var_5'])
-                            html += f'<td style="padding: 6px 8px; text-align: center; color: #FF6666; font-size: 11px;">{w_var95:.2f}%</td>'
+                            html += f'<td style="padding: 6px 8px; text-align: center; color: #FFFFFF; font-size: 11px;">{w_var95:.2f}%</td>'
                             html += f'<td style="padding: 6px 8px; text-align: center; color: {w_color}; font-size: 11px;">{w_circle} {w_ret:.2f}%</td>'
-                            html += f'<td style="padding: 6px 8px; text-align: center; color: #66FF66; font-size: 11px; border-right: 2px solid #555;">{w_var5:.2f}%</td>'
+                            html += f'<td style="padding: 6px 8px; text-align: center; color: #FFFFFF; font-size: 11px; border-right: 2px solid #555;">{w_var5:.2f}%</td>'
                         else:
                             html += '<td style="padding: 6px 8px; text-align: center; color: #555; font-size: 11px;">-</td>'
                             html += '<td style="padding: 6px 8px; text-align: center; color: #555; font-size: 11px;">-</td>'
@@ -7243,9 +7243,9 @@ CREATE INDEX idx_etf_risk_monitor_funds_user_id ON etf_risk_monitor_funds(user_i
                             m_var5 = monthly_m['var_5'] * 100
                             m_circle = get_status_circle(monthly_m['return'], monthly_m['var_95'], monthly_m['var_5'])
                             m_color = get_return_color_html(monthly_m['return'], monthly_m['var_95'], monthly_m['var_5'])
-                            html += f'<td style="padding: 6px 8px; text-align: center; color: #FF6666; font-size: 11px;">{m_var95:.2f}%</td>'
+                            html += f'<td style="padding: 6px 8px; text-align: center; color: #FFFFFF; font-size: 11px;">{m_var95:.2f}%</td>'
                             html += f'<td style="padding: 6px 8px; text-align: center; color: {m_color}; font-size: 11px;">{m_circle} {m_ret:.2f}%</td>'
-                            html += f'<td style="padding: 6px 8px; text-align: center; color: #66FF66; font-size: 11px;">{m_var5:.2f}%</td>'
+                            html += f'<td style="padding: 6px 8px; text-align: center; color: #FFFFFF; font-size: 11px;">{m_var5:.2f}%</td>'
                         else:
                             html += '<td style="padding: 6px 8px; text-align: center; color: #555; font-size: 11px;">-</td>'
                             html += '<td style="padding: 6px 8px; text-align: center; color: #555; font-size: 11px;">-</td>'
@@ -13260,4 +13260,5 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
 
 if __name__ == "__main__":
     main()
+
 
