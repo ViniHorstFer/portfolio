@@ -6383,7 +6383,7 @@ def main():
             
             if not available_cols:
                 st.warning("⚠️ Expected columns not found in fund metrics data. Please check your data file.")
-                st.info(f"Available columns: {', '.join(fund_metrics.columns.tolist())}...")
+                st.info(f"Available columns: {', '.join(fund_metrics.columns.tolist()[:10])}...")
                 return
             
             fund_list = fund_metrics[available_cols].copy()
@@ -6410,13 +6410,11 @@ def main():
         st.title("📊 DETAILED FUND ANALYSIS")
         st.markdown("---")
         
-        # Validate that we have the correct fund metrics data
+        # Validate we have the fund name column
         if 'FUNDO DE INVESTIMENTO' not in fund_metrics.columns:
-            st.error("❌ Investment Funds data not properly loaded")
-            st.warning("⚠️ The loaded data appears to be ETF/Assets data instead of Investment Funds data.")
-            st.info(f"**Available columns:** {', '.join(fund_metrics.columns.tolist()[:15])}")
-            st.info("**Expected columns:** FUNDO DE INVESTIMENTO, CNPJ, GESTOR, CATEGORIA BTG, etc.")
-            st.info("💡 Please check your data source configuration and ensure you're loading Investment Funds data, not ETF data.")
+            st.error("❌ Fund name column 'FUNDO DE INVESTIMENTO' not found in data")
+            st.info(f"Available columns: {', '.join(fund_metrics.columns.tolist()[:15])}")
+            st.warning("💡 This may indicate a data loading issue. Please check your data source.")
             return
         
         # Fund selection
@@ -11888,4 +11886,3 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
 
 if __name__ == "__main__":
     main()
-
