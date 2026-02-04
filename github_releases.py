@@ -561,6 +561,13 @@ def load_assets_metrics_from_github() -> Optional[pd.DataFrame]:
                 st.info("Expected English columns (Name, Class, Category) but found Portuguese columns (FUNDO DE INVESTIMENTO, CNPJ, GESTOR)")
                 return None
             
+            # Set TICKER as index if it's a column
+            if 'TICKER' in df.columns:
+                df = df.set_index('TICKER')
+            elif 'Ticker' in df.columns:
+                df = df.set_index('Ticker')
+            # If ticker is already the index, keep as is
+            
             st.session_state[CACHE_KEYS['assets_metrics']] = df
         
         return df
