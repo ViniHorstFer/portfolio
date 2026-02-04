@@ -482,6 +482,19 @@ def load_fund_details_from_github() -> Optional[pd.DataFrame]:
         )
         
         if df is not None:
+            # Process datetime index like v8 does
+            if not isinstance(df.index, pd.DatetimeIndex):
+                # The first column should be the date if not already indexed
+                if len(df.columns) > 0:
+                    date_col = df.columns[0]
+                    try:
+                        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+                        df = df.dropna(subset=[date_col])
+                        df = df.set_index(date_col)
+                    except Exception as e:
+                        st.warning(f"Could not parse dates in fund details: {str(e)}")
+                        # Continue anyway - might already be properly formatted
+            
             st.session_state[CACHE_KEYS['funds_info']] = df
         
         return df
@@ -504,6 +517,15 @@ def load_benchmarks_from_github() -> Optional[pd.DataFrame]:
         )
         
         if df is not None:
+            # Process datetime index like v8 does
+            # If already has DatetimeIndex, keep as is
+            if not isinstance(df.index, pd.DatetimeIndex):
+                # Parse dates from first column
+                date_col = df.columns[0]
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+                df = df.dropna(subset=[date_col])
+                df = df.set_index(date_col)
+            
             st.session_state[CACHE_KEYS['benchmarks']] = df
         
         return df
