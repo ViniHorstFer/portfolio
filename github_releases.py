@@ -447,6 +447,16 @@ def load_fund_metrics_from_github() -> Optional[pd.DataFrame]:
         )
         
         if df is not None:
+            # Validate that this is Investment Funds data
+            expected_cols = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR']
+            has_expected = any(col in df.columns for col in expected_cols)
+            
+            if not has_expected:
+                st.error(f"❌ File '{RELEASE_FILE_NAMES['fund_metrics']}' doesn't appear to be Investment Funds data")
+                st.warning("It might be ETF/Assets data. Please check your GitHub Release files.")
+                st.info(f"Found columns: {', '.join(df.columns.tolist()[:10])}")
+                return None
+            
             st.session_state[CACHE_KEYS['fund_metrics']] = df
         
         return df
@@ -515,6 +525,20 @@ def load_assets_metrics_from_github() -> Optional[pd.DataFrame]:
         )
         
         if df is not None:
+            # Validate that this is ETF/Assets data
+            expected_cols = ['Name', 'Class', 'Category']  # ETF typical columns
+            has_expected = any(col in df.columns for col in expected_cols)
+            
+            # Also check it's NOT Investment Funds data
+            wrong_cols = ['FUNDO DE INVESTIMENTO', 'CNPJ', 'GESTOR']
+            has_wrong = any(col in df.columns for col in wrong_cols)
+            
+            if has_wrong:
+                st.error(f"❌ File '{RELEASE_FILE_NAMES['assets_metrics']}' appears to be Investment Funds data, not ETF/Assets data")
+                st.warning("Please check your GitHub Release files - you may have uploaded the wrong file.")
+                st.info(f"Found columns: {', '.join(df.columns.tolist()[:10])}")
+                return None
+            
             st.session_state[CACHE_KEYS['assets_metrics']] = df
         
         return df
