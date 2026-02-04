@@ -6410,6 +6410,15 @@ def main():
         st.title("📊 DETAILED FUND ANALYSIS")
         st.markdown("---")
         
+        # Validate that we have the correct fund metrics data
+        if 'FUNDO DE INVESTIMENTO' not in fund_metrics.columns:
+            st.error("❌ Investment Funds data not properly loaded")
+            st.warning("⚠️ The loaded data appears to be ETF/Assets data instead of Investment Funds data.")
+            st.info(f"**Available columns:** {', '.join(fund_metrics.columns.tolist()[:15])}")
+            st.info("**Expected columns:** FUNDO DE INVESTIMENTO, CNPJ, GESTOR, CATEGORIA BTG, etc.")
+            st.info("💡 Please check your data source configuration and ensure you're loading Investment Funds data, not ETF data.")
+            return
+        
         # Fund selection
         fund_names = fund_metrics['FUNDO DE INVESTIMENTO'].tolist()
         fund_cnpjs = fund_metrics['CNPJ'].tolist()
