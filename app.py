@@ -3921,10 +3921,7 @@ def run_etf_system():
         
         return_cols = ['Return 12M', 'Return 24M', 'Return 36M', 'Return 48M', 'Return 60M',
                       'Return 2026', 'Return 2025', 'Return 2024', 'Return 2023', 'Return 2022',
-                      'Return 2021', 'Return 2020', 'Return 2019',
-                      'Excess 12M', 'Excess 24M', 'Excess 36M', 'Excess 48M', 'Excess 60M',
-                      'Excess 2026', 'Excess 2025', 'Excess 2024', 'Excess 2023', 'Excess 2022',
-                      'Excess 2021', 'Excess 2020', 'Excess 2019']
+                      'Return 2021', 'Return 2020', 'Return 2019']
         
         advanced_cols = ['VaR(95)_D', 'CVaR(95)_D', 'Omega_D', 'Rachev_D',
                         'VaR(95)_W', 'CVaR(95)_W', 'Omega_W', 'Rachev_W',
@@ -3944,14 +3941,14 @@ def run_etf_system():
             selected_returns = st.multiselect(
                 "Return Metrics",
                 options=[c for c in return_cols if c in metrics_df.columns],
-                default=['Return 12M', 'Return 24M', 'Excess 12M', 'Excess 24M']
+                default=['Return 12M', 'Return 24M', 'Return 36M']
             )
         
         with col3:
             selected_advanced = st.multiselect(
                 "Advanced Risk Metrics",
                 options=[c for c in advanced_cols if c in metrics_df.columns],
-                default=['VaR(95)_D', 'CVaR(95)_D', 'Max Drawdown']
+                default=['Omega_D', 'Rachev_D', 'CVaR(95)_D', 'Max Drawdown', 'Conditional Drawdown']
             )
         
         # Combine all selected columns
@@ -13260,5 +13257,4 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
 
 if __name__ == "__main__":
     main()
-
 
