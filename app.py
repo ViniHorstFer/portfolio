@@ -1043,11 +1043,11 @@ def calculate_relative_performance(fund_ret, bench_ret):
 def create_monthly_returns_table(fund_returns_full, benchmark_data, comparison_method='Relative Performance'):
     """Create monthly returns table organized by year with fund, benchmark, and comparison."""
     # Convert daily returns to monthly
-    fund_monthly = fund_returns_full.resample('M').apply(lambda x: (1 + x).prod() - 1)
+    fund_monthly = fund_returns_full.resample('ME').apply(lambda x: (1 + x).prod() - 1)
     
     # Align benchmark with fund dates
     aligned_benchmark = benchmark_data.reindex(fund_returns_full.index, method='ffill').fillna(0)
-    benchmark_monthly = aligned_benchmark.resample('M').apply(lambda x: (1 + x).prod() - 1)
+    benchmark_monthly = aligned_benchmark.resample('ME').apply(lambda x: (1 + x).prod() - 1)
     
     # Get years with data (reverse order - latest first)
     years = sorted(fund_monthly.index.year.unique(), reverse=True)
@@ -3452,7 +3452,7 @@ def run_etf_system():
             elif frequency_choice == 'Weekly':
                 returns_data = etf_prices.resample('W').last().pct_change().dropna()
             else:  # Monthly
-                returns_data = etf_prices.resample('M').last().pct_change().dropna()
+                returns_data = etf_prices.resample('ME').last().pct_change().dropna()
             
             # Omega Ratio Section
             st.markdown("#### Omega Ratio")
@@ -5041,7 +5041,7 @@ def run_etf_system():
                         elif frequency_choice == 'Weekly':
                             analysis_returns = portfolio_returns.resample('W').apply(lambda x: (1 + x).prod() - 1)
                         else:
-                            analysis_returns = portfolio_returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
+                            analysis_returns = portfolio_returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)
                         
                         st.markdown("---")
                         
@@ -5646,7 +5646,7 @@ CREATE POLICY "Allow all operations" ON etf_recommended_portfolios
                     elif frequency_choice == 'Weekly':
                         returns_data = portfolio_returns.resample('W').apply(lambda x: (1 + x).prod() - 1)
                     else:
-                        returns_data = portfolio_returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
+                        returns_data = portfolio_returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)
                     
                     st.markdown("---")
                     
@@ -7956,7 +7956,7 @@ def main():
                     returns_data = fund_returns_full.resample('W').apply(lambda x: (1 + x).prod() - 1)
                 else:
                     # Convert to monthly returns
-                    returns_data = fund_returns_full.resample('M').apply(lambda x: (1 + x).prod() - 1)
+                    returns_data = fund_returns_full.resample('ME').apply(lambda x: (1 + x).prod() - 1)
                 
                 st.markdown("---")
                 
@@ -9934,7 +9934,7 @@ def main():
             elif frequency_choice == 'Weekly':
                 analysis_returns = portfolio_returns.resample('W').apply(lambda x: (1 + x).prod() - 1)
             else:
-                analysis_returns = portfolio_returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
+                analysis_returns = portfolio_returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)
             
             st.markdown("---")
             
@@ -10854,7 +10854,7 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
                             elif frequency_choice == 'Weekly':
                                 returns_data = portfolio_returns.resample('W').apply(lambda x: (1 + x).prod() - 1)
                             else:
-                                returns_data = portfolio_returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
+                                returns_data = portfolio_returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)
                             
                             st.markdown("---")
                             
