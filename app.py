@@ -12811,11 +12811,13 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                         subcategory = 'Multimercado'
                     cnpj = fund_row['CNPJ'].iloc[0] if 'CNPJ' in fund_row.columns else None
                     cnpj_standard = fund_row['CNPJ_STANDARD'].iloc[0] if 'CNPJ_STANDARD' in fund_row.columns else standardize_cnpj(cnpj) if cnpj else None
+                    update = fund_row['LAST_UPDATE'].iloc[0] if 'LAST_UPDATE' in fund_row.columns else 'N/A'
                     
                     fund_info_list.append({
                         'name': fund_name,
                         'subcategory': subcategory,
-                        'cnpj_standard': cnpj_standard
+                        'cnpj_standard': cnpj_standard,
+                        'update': pd.to_datetime(update).strftime('%d/%b')
                     })
             
             # Sort by sub-category, then alphabetically by name
@@ -12927,6 +12929,7 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                 <table class="risk-table">
                     <tr>
                         <th rowspan="2">INVESTMENT FUND</th>
+                        <th rowspan="2">DATE</th>
                         <th rowspan="2">RET</th>
                         <th rowspan="2">NNM</th>
                         <th colspan="2">DAILY</th>
@@ -12948,10 +12951,11 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                 for fund_info in fund_info_list:
                     fund_name = fund_info['name']
                     subcategory = fund_info['subcategory']
+                    fund_last_update = fund_info['update']
                     
                     # Sub-category separator row
                     if subcategory != current_subcategory:
-                        html += f'<tr class="category-row"><td colspan="9">{subcategory}</td></tr>'
+                        html += f'<tr class="category-row"><td colspan="10">{subcategory}</td></tr>'
                         current_subcategory = subcategory
                     
                     # Get returns data
@@ -13004,7 +13008,7 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
                     else:
                         nnm_status = '❓'
                     
-                    html += f'<tr><td class="fund-name">{fund_name}</td><td>{returns_status}</td><td>{nnm_status}</td>'
+                    html += f'<tr><td class="fund-name">{fund_name}</td><td>{fund_last_update}</td><td>{returns_status}</td><td>{nnm_status}</td>'
                     
                     for freq in ['daily', 'weekly', 'monthly']:
                         # Return column
@@ -13257,4 +13261,3 @@ CREATE POLICY "Allow all operations" ON risk_monitor_funds
 
 if __name__ == "__main__":
     main()
-
