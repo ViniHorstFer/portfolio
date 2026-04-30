@@ -170,15 +170,13 @@ def save_portfolio_to_supabase(portfolio_name: str, portfolio: dict, user_id: st
 
 
 def load_portfolio_from_supabase(portfolio_name: str, user_id: str = "default") -> dict:
-    """Load portfolio from Supabase database."""
+    """Load portfolio from Supabase - searches across all users."""
     client = get_supabase_client()
     if not client:
         return None
     
     try:
         result = client.table("recommended_portfolios").select("*").eq(
-            "user_id", user_id
-        ).eq(
             "portfolio_name", portfolio_name
         ).execute()
         
@@ -191,16 +189,14 @@ def load_portfolio_from_supabase(portfolio_name: str, user_id: str = "default") 
 
 
 def list_portfolios_from_supabase(user_id: str = "default") -> list:
-    """List all saved portfolios for a user from Supabase."""
+    """List all saved portfolios from Supabase - shared across all users."""
     client = get_supabase_client()
     if not client:
         return []
     
     try:
         result = client.table("recommended_portfolios").select(
-            "portfolio_name, updated_at"
-        ).eq(
-            "user_id", user_id
+            "portfolio_name, user_id, updated_at"
         ).order(
             "updated_at", desc=True
         ).execute()
@@ -335,15 +331,17 @@ USERS = {
     "manager": hashlib.sha256("manager789".encode()).hexdigest(),
     "banker": hashlib.sha256("banker753".encode()).hexdigest(),
     "trader": hashlib.sha256("trader2026".encode()).hexdigest(),
+    "guilherme": hashlib.sha256("Gu1lh3rm3".encode()).hexdigest(),
 }
 
 # User role permissions
 USER_ROLES = {
-    "admin": {"can_upload": True, "tabs": "all"},
-    "analyst": {"can_upload": True, "tabs": "all"},
-    "manager": {"can_upload": True, "tabs": "all"},
-    "banker": {"can_upload": False, "tabs": ["📋 FUND DATABASE", "📊 DETAILED ANALYSIS", "💼 RECOMMENDED PORTFOLIO"]},
-    "trader": {"can_upload": False, "tabs": "all"},
+    "admin":      {"can_upload": True,  "tabs": "all", "sidebar": True,  "can_manage_portfolios": True},
+    "analyst":    {"can_upload": True,  "tabs": "all", "sidebar": True,  "can_manage_portfolios": True},
+    "manager":    {"can_upload": True,  "tabs": "all", "sidebar": True,  "can_manage_portfolios": True},
+    "banker":     {"can_upload": False, "tabs": ["📋 FUND DATABASE", "📊 DETAILED ANALYSIS", "💼 RECOMMENDED PORTFOLIO"], "sidebar": True,  "can_manage_portfolios": True},
+    "trader":     {"can_upload": False, "tabs": "all", "sidebar": True,  "can_manage_portfolios": True},
+    "guilherme":  {"can_upload": False, "tabs": ["📋 FUND DATABASE", "📊 DETAILED ANALYSIS", "💼 RECOMMENDED PORTFOLIO"], "sidebar": False, "can_manage_portfolios": False},
 }
 
 def get_user_permissions(username: str) -> dict:
@@ -357,6 +355,14 @@ def can_user_upload(username: str) -> bool:
 def get_user_tabs(username: str) -> list:
     """Get list of tabs user can access. Returns 'all' or list of tab names."""
     return USER_ROLES.get(username, {}).get("tabs", "all")
+
+def can_user_see_sidebar(username: str) -> bool:
+    """Check if user can see the sidebar controls."""
+    return USER_ROLES.get(username, {}).get("sidebar", True)
+
+def can_user_manage_portfolios(username: str) -> bool:
+    """Check if user can save and delete portfolios (load-only if False)."""
+    return USER_ROLES.get(username, {}).get("can_manage_portfolios", True)
 
 def check_password(username, password):
     """Verify username and password."""
@@ -5333,60 +5339,72 @@ CREATE POLICY "Allow all operations" ON etf_recommended_portfolios
                 else:
                     st.success("✅ Connected to Supabase")
                     
-                    # Get current user (from session or default)
                     current_user = st.session_state.get('username', 'default')
+                    user_can_manage = can_user_manage_portfolios(current_user)
                     
                     save_col, load_col = st.columns(2)
                     
                     with save_col:
-                        st.markdown("##### 💾 Save Current Portfolio")
-                        
-                        if st.session_state.get('etf_recommended_portfolio'):
-                            save_name = st.text_input(
-                                "Portfolio Name:", 
-                                value=f"ETF_Portfolio_{datetime.now().strftime('%Y%m%d')}",
-                                key="etf_supabase_save_name"
-                            )
-                            
-                            if st.button("☁️ Save to Supabase", key="etf_supabase_save_btn", use_container_width=True):
-                                try:
-                                    data = {
-                                        'user_id': current_user,
-                                        'portfolio_name': save_name,
-                                        'portfolio_data': st.session_state['etf_recommended_portfolio'],
-                                        'updated_at': datetime.now().isoformat()
-                                    }
-                                    result = supabase_client.table('etf_recommended_portfolios').upsert(
-                                        data, on_conflict='user_id,portfolio_name'
-                                    ).execute()
-                                    if result.data:
+                        if user_can_manage:
+                            st.markdown("##### 💾 Save Current Portfolio")
+                            if st.session_state.get('recommended_portfolio'):
+                                save_name = st.text_input(
+                                    "Portfolio Name:", 
+                                    value=f"Portfolio_{datetime.now().strftime('%Y%m%d')}",
+                                    key="supabase_save_name"
+                                )
+                                if st.button("☁️ Save to Supabase", key="supabase_save_btn", use_container_width=True):
+                                    if save_portfolio_to_supabase(save_name, st.session_state['recommended_portfolio'], current_user):
                                         st.success(f"✅ Portfolio '{save_name}' saved!")
                                         st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error saving: {e}")
+                            else:
+                                st.info("Create a portfolio first to save it")
                         else:
-                            st.info("Create a portfolio first to save it")
+                            st.info("🔒 Saving portfolios is not available for your account.")
                     
                     with load_col:
                         st.markdown("##### 📂 Load Saved Portfolio")
                         
-                        try:
-                            result = supabase_client.table('etf_recommended_portfolios').select('*').eq('user_id', current_user).execute()
-                            saved_portfolios = result.data if result.data else []
-                        except:
-                            saved_portfolios = []
+                        saved_portfolios = list_portfolios_from_supabase(current_user)
                         
                         if saved_portfolios:
                             portfolio_options = [p['portfolio_name'] for p in saved_portfolios]
-                            selected_load = st.selectbox("Select portfolio:", portfolio_options, key="etf_supabase_load_select")
+                            selected_portfolio = st.selectbox(
+                                "Select Portfolio:",
+                                portfolio_options,
+                                key="supabase_load_select"
+                            )
                             
-                            if st.button("📥 Load Portfolio", key="etf_supabase_load_btn", use_container_width=True):
-                                for p in saved_portfolios:
-                                    if p['portfolio_name'] == selected_load:
-                                        st.session_state['etf_recommended_portfolio'] = p['portfolio_data']
-                                        st.session_state['etf_recommended_portfolio_saved'] = True
-                                        st.success(f"✅ Loaded '{selected_load}'")
-                                        st.rerun()
+                            if user_can_manage:
+                                btn_col1, btn_col2 = st.columns(2)
+                                with btn_col1:
+                                    load_btn = st.button("📥 Load", key="supabase_load_btn", use_container_width=True)
+                                with btn_col2:
+                                    if st.button("🗑️ Delete", key="supabase_delete_btn", use_container_width=True):
+                                        if delete_portfolio_from_supabase(selected_portfolio, current_user):
+                                            st.success(f"✅ Portfolio '{selected_portfolio}' deleted!")
+                                            st.rerun()
+                            else:
+                                load_btn = st.button("📥 Load", key="supabase_load_btn", use_container_width=True)
+                            
+                            if load_btn:
+                                loaded = load_portfolio_from_supabase(selected_portfolio, current_user)
+                                if loaded:
+                                    st.session_state['recommended_portfolio'] = loaded
+                                    st.session_state['recommended_portfolio_saved'] = True
+                                    st.session_state['temp_portfolio'] = loaded.copy()
+                                    if 'inv_fund_tables_computed' in st.session_state:
+                                        del st.session_state['inv_fund_tables_computed']
+                                    if 'inv_fund_returns_cache' in st.session_state:
+                                        del st.session_state['inv_fund_returns_cache']
+                                    st.success(f"✅ Portfolio '{selected_portfolio}' loaded!")
+                                    st.rerun()
+                            
+                            st.markdown("##### 📋 Saved Portfolios")
+                            for p in saved_portfolios:
+                                updated = p.get('updated_at', '')[:10] if p.get('updated_at') else 'N/A'
+                                owner = p.get('user_id', '')
+                                st.text(f"• {p['portfolio_name']} — by {owner} (Updated: {updated})")
                         else:
                             st.info("No saved portfolios found")
             
@@ -7473,118 +7491,155 @@ def main():
     
     # Add logout button to sidebar
     logout_button()
-    
+
+    # Hide sidebar entirely for users without sidebar access
+    current_username = st.session_state.get('username', 'admin')
+    if not can_user_see_sidebar(current_username):
+        st.markdown("""
+            <style>
+            [data-testid="stSidebar"] { display: none !important; }
+            [data-testid="collapsedControl"] { display: none !important; }
+            </style>
+        """, unsafe_allow_html=True)
+
     # System Selector
-    with st.sidebar:
-        st.markdown("---")
-        st.header("⚙️ System Selection")
-        
-        system_type = st.radio(
-            "Select System:",
-            options=['📈 Investment Funds', '📊 ETFs'],
-            index=0,
-            help="Choose between Brazilian Investment Funds or US ETF analysis"
-        )
-        
-        st.markdown("---")
-    
+    current_username = st.session_state.get('username', 'admin')
+    sidebar_allowed = can_user_see_sidebar(current_username)
+
+    if sidebar_allowed:
+        with st.sidebar:
+            st.markdown("---")
+            st.header("⚙️ System Selection")
+            
+            etf_allowed = USER_ROLES.get(current_username, {}).get("tabs") == "all"
+            if etf_allowed:
+                system_type = st.radio(
+                    "Select System:",
+                    options=['📈 Investment Funds', '📊 ETFs'],
+                    index=0,
+                    help="Choose between Brazilian Investment Funds or US ETF analysis"
+                )
+            else:
+                system_type = '📈 Investment Funds'
+            
+            st.markdown("---")
+    else:
+        system_type = '📈 Investment Funds'
+
     # Early return for ETF system (OUTSIDE sidebar)
     if system_type == '📊 ETFs':
         run_etf_system()
-        return  # Exit main() here, don't run Investment Funds code
-
+        return
 
     # Sidebar - Data Source Selection
-    with st.sidebar:
-        st.image("https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeigayrnnsuwglzkbhikm32ksvucxecuorcj4k36l4de7na6wcdpjsa", 
-                use_container_width=True)
-        st.markdown("---")
-        
-        st.header("📁 Data Source")
-        
-        # Check if user can upload
-        current_username = st.session_state.get('username', 'admin')
-        user_can_upload = can_user_upload(current_username)
-        
-        # Determine default data source based on what's configured
-        default_source_index = 0  # GitHub Releases
-        if not is_github_configured():
-            if os.path.exists(DEFAULT_METRICS_PATH) or os.path.exists(DEFAULT_DETAILS_PATH):
-                default_source_index = 1  # Local Files
+    if sidebar_allowed:
+        with st.sidebar:
+            st.image("https://aquamarine-worthy-zebra-762.mypinata.cloud/ipfs/bafybeigayrnnsuwglzkbhikm32ksvucxecuorcj4k36l4de7na6wcdpjsa", 
+                    use_container_width=True)
+            st.markdown("---")
+            
+            st.header("📁 Data Source")
+            
+            # Check if user can upload
+            current_username = st.session_state.get('username', 'admin')
+            user_can_upload = can_user_upload(current_username)
+            
+            # Determine default data source based on what's configured
+            default_source_index = 0  # GitHub Releases
+            if not is_github_configured():
+                if os.path.exists(DEFAULT_METRICS_PATH) or os.path.exists(DEFAULT_DETAILS_PATH):
+                    default_source_index = 1  # Local Files
+                else:
+                    default_source_index = 2 if user_can_upload else 0  # Upload only if allowed
+            
+            # Data source options depend on user permissions
+            if user_can_upload:
+                data_source_options = ['📦 GitHub Releases', '📂 Local Files', '📤 Upload']
             else:
-                default_source_index = 2 if user_can_upload else 0  # Upload only if allowed
-        
-        # Data source options depend on user permissions
-        if user_can_upload:
-            data_source_options = ['📦 GitHub Releases', '📂 Local Files', '📤 Upload']
-        else:
-            data_source_options = ['📦 GitHub Releases', '📂 Local Files']
-            if default_source_index == 2:
-                default_source_index = 0  # Fall back to GitHub if upload was default
-        
-        # Data source selection
-        data_source = st.radio(
-            "Load data from:",
-            options=data_source_options,
-            index=min(default_source_index, len(data_source_options) - 1),
-            help="GitHub: Cloud storage via releases | Local: Load from disk" + (" | Upload: Upload files manually" if user_can_upload else "")
-        )
-        
+                data_source_options = ['📦 GitHub Releases', '📂 Local Files']
+                if default_source_index == 2:
+                    default_source_index = 0  # Fall back to GitHub if upload was default
+            
+            # Data source selection
+            data_source = st.radio(
+                "Load data from:",
+                options=data_source_options,
+                index=min(default_source_index, len(data_source_options) - 1),
+                help="GitHub: Cloud storage via releases | Local: Load from disk" + (" | Upload: Upload files manually" if user_can_upload else "")
+            )
+            
+            uploaded_metrics = None
+            uploaded_details = None
+            uploaded_benchmarks = None
+            fund_metrics = None
+            fund_details = None
+            benchmarks = None
+            
+            if data_source == '📦 GitHub Releases':
+                # Use the GitHub panel which handles everything (hide upload for non-upload users)
+                fund_metrics, fund_details, benchmarks = render_github_data_panel(show_upload=user_can_upload)
+                
+                # Process fund_metrics if loaded
+                if fund_metrics is not None:
+                    fund_metrics = fund_metrics.replace('n/a', np.nan)
+                    if 'CNPJ' in fund_metrics.columns:
+                        fund_metrics['CNPJ_STANDARD'] = fund_metrics['CNPJ'].apply(standardize_cnpj)
+                
+                # Process fund_details if loaded
+                if fund_details is not None and 'CNPJ_FUNDO' in fund_details.columns:
+                    fund_details['CNPJ_STANDARD'] = fund_details['CNPJ_FUNDO'].apply(standardize_cnpj)
+            
+            elif data_source == '📂 Local Files':
+                st.info("📂 Using local files...")
+                files_found = []
+                if os.path.exists(DEFAULT_METRICS_PATH):
+                    files_found.append(f"✓ {DEFAULT_METRICS_PATH.split('/')[-1]}")
+                if os.path.exists(DEFAULT_DETAILS_PATH):
+                    files_found.append(f"✓ {DEFAULT_DETAILS_PATH.split('/')[-1]}")
+                if os.path.exists(DEFAULT_BENCHMARKS_PATH):
+                    files_found.append(f"✓ {DEFAULT_BENCHMARKS_PATH.split('/')[-1]}")
+                
+                if files_found:
+                    for f in files_found:
+                        st.success(f)
+                else:
+                    st.warning("No local files found")
+            
+            else:  # Upload
+                uploaded_metrics = st.file_uploader(
+                    "Fund Metrics (xlsx/pkl)", 
+                    type=['xlsx', 'pkl'],
+                    help="Upload fund_metrics file"
+                )
+                uploaded_details = st.file_uploader(
+                    "Fund Details (pkl)",
+                    type=['pkl'],
+                    help="Upload funds_info.pkl"
+                )
+                uploaded_benchmarks = st.file_uploader(
+                    "Benchmarks (xlsx/pkl)",
+                    type=['xlsx', 'pkl'],
+                    help="Upload benchmarks_data file"
+                )
+            
+            st.markdown("---")
+
+    else:  # sidebar not allowed — load data silently with no UI rendered
+        data_source = '📦 GitHub Releases'
         uploaded_metrics = None
         uploaded_details = None
         uploaded_benchmarks = None
-        fund_metrics = None
-        fund_details = None
-        benchmarks = None
-        
-        if data_source == '📦 GitHub Releases':
-            # Use the GitHub panel which handles everything (hide upload for non-upload users)
-            fund_metrics, fund_details, benchmarks = render_github_data_panel(show_upload=user_can_upload)
-            
-            # Process fund_metrics if loaded
-            if fund_metrics is not None:
-                fund_metrics = fund_metrics.replace('n/a', np.nan)
-                if 'CNPJ' in fund_metrics.columns:
-                    fund_metrics['CNPJ_STANDARD'] = fund_metrics['CNPJ'].apply(standardize_cnpj)
-            
-            # Process fund_details if loaded
-            if fund_details is not None and 'CNPJ_FUNDO' in fund_details.columns:
-                fund_details['CNPJ_STANDARD'] = fund_details['CNPJ_FUNDO'].apply(standardize_cnpj)
-        
-        elif data_source == '📂 Local Files':
-            st.info("📂 Using local files...")
-            files_found = []
-            if os.path.exists(DEFAULT_METRICS_PATH):
-                files_found.append(f"✓ {DEFAULT_METRICS_PATH.split('/')[-1]}")
-            if os.path.exists(DEFAULT_DETAILS_PATH):
-                files_found.append(f"✓ {DEFAULT_DETAILS_PATH.split('/')[-1]}")
-            if os.path.exists(DEFAULT_BENCHMARKS_PATH):
-                files_found.append(f"✓ {DEFAULT_BENCHMARKS_PATH.split('/')[-1]}")
-            
-            if files_found:
-                for f in files_found:
-                    st.success(f)
-            else:
-                st.warning("No local files found")
-        
-        else:  # Upload
-            uploaded_metrics = st.file_uploader(
-                "Fund Metrics (xlsx/pkl)", 
-                type=['xlsx', 'pkl'],
-                help="Upload fund_metrics file"
-            )
-            uploaded_details = st.file_uploader(
-                "Fund Details (pkl)",
-                type=['pkl'],
-                help="Upload funds_info.pkl"
-            )
-            uploaded_benchmarks = st.file_uploader(
-                "Benchmarks (xlsx/pkl)",
-                type=['xlsx', 'pkl'],
-                help="Upload benchmarks_data file"
-            )
-        
-        st.markdown("---")
+        fund_metrics, fund_details, benchmarks = (
+            load_fund_metrics_from_github(),
+            load_fund_details_from_github(),
+            load_benchmarks_from_github()
+        )
+        if fund_metrics is not None:
+            fund_metrics = fund_metrics.replace('n/a', np.nan)
+            if 'CNPJ' in fund_metrics.columns:
+                fund_metrics['CNPJ_STANDARD'] = fund_metrics['CNPJ'].apply(standardize_cnpj)
+        if fund_details is not None and 'CNPJ_FUNDO' in fund_details.columns:
+            fund_details['CNPJ_STANDARD'] = fund_details['CNPJ_FUNDO'].apply(standardize_cnpj)
     
     # Load data for non-GitHub sources (GitHub already loaded above)
     if data_source == '📂 Local Files':
@@ -10433,78 +10488,79 @@ def main():
             with rec_tab1:
                 st.markdown("### 📊 Portfolio Analysis")
                 st.markdown("---")
-                st.markdown("#### 📝 Create Your Portfolio")
                 
-                creation_method = st.radio("Choose method:", ["📤 Upload Excel File", "🔍 Search and Select Funds"], horizontal=True, key="rec_method")
-                
-                if creation_method == "📤 Upload Excel File":
-                    st.markdown("---")
-                    template_df = create_portfolio_template()
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        template_df.to_excel(writer, index=False)
-                    buffer.seek(0)
-                    c1, c2 = st.columns([1, 2])
-                    with c1:
-                        st.download_button("📥 Download Template", buffer, "portfolio_template.xlsx", use_container_width=True)
-                    with c2:
-                        st.info("💡 Fill template with fund names and allocations, then upload.")
+                current_user = st.session_state.get('username', 'default')
+                if can_user_manage_portfolios(current_user):
+                    st.markdown("#### 📝 Create Your Portfolio")
                     
-                    uploaded = st.file_uploader("Upload portfolio", type=['xlsx'], key="rec_upload")
-                    if uploaded:
-                        try:
-                            pdf = pd.read_excel(uploaded)
-                            if 'Fund Name' in pdf.columns and 'Allocation (%)' in pdf.columns:
-                                avail = fund_metrics['FUNDO DE INVESTIMENTO'].tolist()
-                                valid, invalid = {}, []
-                                for _, r in pdf.iterrows():
-                                    if r['Fund Name'] in avail:
-                                        valid[r['Fund Name']] = r['Allocation (%)']
-                                    else:
-                                        invalid.append(r['Fund Name'])
-                                if invalid:
-                                    st.warning(f"Not found: {', '.join(invalid)}")
-                                if valid:
-                                    st.success(f"✅ {len(valid)} valid funds")
-                                    if st.button("💾 Save Portfolio", key="save_up"):
-                                        st.session_state['recommended_portfolio'] = valid
-                                        st.session_state['recommended_portfolio_saved'] = True
-                                        st.rerun()
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-                else:
-                    st.markdown("---")
-                    avail = fund_metrics['FUNDO DE INVESTIMENTO'].tolist()
-                    c1, c2, c3 = st.columns([3, 1, 1])
-                    with c1:
-                        sel = st.selectbox("Fund:", [f for f in avail if f not in st.session_state['temp_portfolio']], key="rec_sel")
-                    with c2:
-                        alloc = st.number_input("Alloc (%)", 0.1, 100.0, 10.0, 0.5, key="rec_alloc")
-                    with c3:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("➕ Add"):
-                            st.session_state['temp_portfolio'][sel] = alloc
-                            st.rerun()
+                    creation_method = st.radio("Choose method:", ["📤 Upload Excel File", "🔍 Search and Select Funds"], horizontal=True, key="rec_method")
                     
-                    if st.session_state['temp_portfolio']:
-                        for fn in list(st.session_state['temp_portfolio'].keys()):
-                            c1, c2, c3 = st.columns([3, 1, 1])
-                            with c1:
-                                st.text(fn)
-                            with c2:
-                                st.session_state['temp_portfolio'][fn] = st.number_input("", 0.1, 100.0, float(st.session_state['temp_portfolio'][fn]), 0.5, key=f"a_{fn}", label_visibility="collapsed")
-                            with c3:
-                                if st.button("❌", key=f"r_{fn}"):
-                                    del st.session_state['temp_portfolio'][fn]
-                                    st.rerun()
+                    if creation_method == "📤 Upload Excel File":
+                        st.markdown("---")
+                        template_df = create_portfolio_template()
+                        buffer = io.BytesIO()
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            template_df.to_excel(writer, index=False)
+                        buffer.seek(0)
+                        c1, c2 = st.columns([1, 2])
+                        with c1:
+                            st.download_button("📥 Download Template", buffer, "portfolio_template.xlsx", use_container_width=True)
+                        with c2:
+                            st.info("💡 Fill template with fund names and allocations, then upload.")
                         
-                        st.metric("Total", f"{sum(st.session_state['temp_portfolio'].values()):.1f}%")
-                        if st.button("💾 Save Portfolio", key="save_sel"):
-                            st.session_state['recommended_portfolio'] = st.session_state['temp_portfolio'].copy()
-                            st.session_state['recommended_portfolio_saved'] = True
-                            st.rerun()
-                
-                st.markdown("---")
+                        uploaded = st.file_uploader("Upload portfolio", type=['xlsx'], key="rec_upload")
+                        if uploaded:
+                            try:
+                                pdf = pd.read_excel(uploaded)
+                                if 'Fund Name' in pdf.columns and 'Allocation (%)' in pdf.columns:
+                                    avail = fund_metrics['FUNDO DE INVESTIMENTO'].tolist()
+                                    valid, invalid = {}, []
+                                    for _, r in pdf.iterrows():
+                                        if r['Fund Name'] in avail:
+                                            valid[r['Fund Name']] = r['Allocation (%)']
+                                        else:
+                                            invalid.append(r['Fund Name'])
+                                    if invalid:
+                                        st.warning(f"Not found: {', '.join(invalid)}")
+                                    if valid:
+                                        st.success(f"✅ {len(valid)} valid funds")
+                                        if st.button("💾 Save Portfolio", key="save_up"):
+                                            st.session_state['recommended_portfolio'] = valid
+                                            st.session_state['recommended_portfolio_saved'] = True
+                                            st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+                    else:
+                        st.markdown("---")
+                        avail = fund_metrics['FUNDO DE INVESTIMENTO'].tolist()
+                        c1, c2, c3 = st.columns([3, 1, 1])
+                        with c1:
+                            sel = st.selectbox("Fund:", [f for f in avail if f not in st.session_state['temp_portfolio']], key="rec_sel")
+                        with c2:
+                            alloc = st.number_input("Alloc (%)", 0.1, 100.0, 10.0, 0.5, key="rec_alloc")
+                        with c3:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            if st.button("➕ Add"):
+                                st.session_state['temp_portfolio'][sel] = alloc
+                                st.rerun()
+                        
+                        if st.session_state['temp_portfolio']:
+                            for fn in list(st.session_state['temp_portfolio'].keys()):
+                                c1, c2, c3 = st.columns([3, 1, 1])
+                                with c1:
+                                    st.text(fn)
+                                with c2:
+                                    st.session_state['temp_portfolio'][fn] = st.number_input("", 0.1, 100.0, float(st.session_state['temp_portfolio'][fn]), 0.5, key=f"a_{fn}", label_visibility="collapsed")
+                                with c3:
+                                    if st.button("❌", key=f"r_{fn}"):
+                                        del st.session_state['temp_portfolio'][fn]
+                                        st.rerun()
+                            
+                            st.metric("Total", f"{sum(st.session_state['temp_portfolio'].values()):.1f}%")
+                            if st.button("💾 Save Portfolio", key="save_sel"):
+                                st.session_state['recommended_portfolio'] = st.session_state['temp_portfolio'].copy()
+                                st.session_state['recommended_portfolio_saved'] = True
+                                st.rerun()
                 
                 # ═══════════════════════════════════════════════════════════════════════════
                 # SUPABASE PORTFOLIO STORAGE
@@ -10552,67 +10608,83 @@ CREATE POLICY "Allow all operations" ON recommended_portfolios
                         
                         # Get current user (from session or default)
                         current_user = st.session_state.get('username', 'default')
+                        user_can_manage = can_user_manage_portfolios(current_user)
                         
-                        save_col, load_col = st.columns(2)
-                        
-                        with save_col:
-                            st.markdown("##### 💾 Save Current Portfolio")
+                        if user_can_manage:
+                            save_col, load_col = st.columns(2)
                             
-                            if st.session_state.get('recommended_portfolio'):
-                                save_name = st.text_input(
-                                    "Portfolio Name:", 
-                                    value=f"Portfolio_{datetime.now().strftime('%Y%m%d')}",
-                                    key="supabase_save_name"
-                                )
-                                
-                                if st.button("☁️ Save to Supabase", key="supabase_save_btn", use_container_width=True):
-                                    if save_portfolio_to_supabase(save_name, st.session_state['recommended_portfolio'], current_user):
-                                        st.success(f"✅ Portfolio '{save_name}' saved!")
-                                        st.rerun()
-                            else:
-                                st.info("Create a portfolio first to save it")
-                        
-                        with load_col:
-                            st.markdown("##### 📂 Load Saved Portfolio")
+                            with save_col:
+                                st.markdown("##### 💾 Save Current Portfolio")
+                                if st.session_state.get('recommended_portfolio'):
+                                    save_name = st.text_input(
+                                        "Portfolio Name:", 
+                                        value=f"Portfolio_{datetime.now().strftime('%Y%m%d')}",
+                                        key="supabase_save_name"
+                                    )
+                                    if st.button("☁️ Save to Supabase", key="supabase_save_btn", use_container_width=True):
+                                        if save_portfolio_to_supabase(save_name, st.session_state['recommended_portfolio'], current_user):
+                                            st.success(f"✅ Portfolio '{save_name}' saved!")
+                                            st.rerun()
+                                else:
+                                    st.info("Create a portfolio first to save it")
                             
-                            saved_portfolios = list_portfolios_from_supabase(current_user)
-                            
-                            if saved_portfolios:
-                                portfolio_options = [p['portfolio_name'] for p in saved_portfolios]
-                                selected_portfolio = st.selectbox(
-                                    "Select Portfolio:",
-                                    portfolio_options,
-                                    key="supabase_load_select"
-                                )
-                                
-                                btn_col1, btn_col2 = st.columns(2)
-                                
-                                with btn_col1:
-                                    if st.button("📥 Load", key="supabase_load_btn", use_container_width=True):
+                            with load_col:
+                                st.markdown("##### 📂 Load Saved Portfolio")
+                                saved_portfolios = list_portfolios_from_supabase(current_user)
+                                if saved_portfolios:
+                                    portfolio_options = [p['portfolio_name'] for p in saved_portfolios]
+                                    selected_portfolio = st.selectbox("Select Portfolio:", portfolio_options, key="supabase_load_select")
+                                    btn_col1, btn_col2 = st.columns(2)
+                                    with btn_col1:
+                                        load_btn = st.button("📥 Load", key="supabase_load_btn", use_container_width=True)
+                                    with btn_col2:
+                                        if st.button("🗑️ Delete", key="supabase_delete_btn", use_container_width=True):
+                                            if delete_portfolio_from_supabase(selected_portfolio, current_user):
+                                                st.success(f"✅ Portfolio '{selected_portfolio}' deleted!")
+                                                st.rerun()
+                                    if load_btn:
                                         loaded = load_portfolio_from_supabase(selected_portfolio, current_user)
                                         if loaded:
                                             st.session_state['recommended_portfolio'] = loaded
                                             st.session_state['recommended_portfolio_saved'] = True
                                             st.session_state['temp_portfolio'] = loaded.copy()
-                                            # Clear cached tables to force recomputation
                                             if 'inv_fund_tables_computed' in st.session_state:
                                                 del st.session_state['inv_fund_tables_computed']
                                             if 'inv_fund_returns_cache' in st.session_state:
                                                 del st.session_state['inv_fund_returns_cache']
                                             st.success(f"✅ Portfolio '{selected_portfolio}' loaded!")
                                             st.rerun()
-                                
-                                with btn_col2:
-                                    if st.button("🗑️ Delete", key="supabase_delete_btn", use_container_width=True):
-                                        if delete_portfolio_from_supabase(selected_portfolio, current_user):
-                                            st.success(f"✅ Portfolio '{selected_portfolio}' deleted!")
-                                            st.rerun()
-                                
-                                # Show saved portfolios info
+                                    st.markdown("##### 📋 Saved Portfolios")
+                                    for p in saved_portfolios:
+                                        updated = p.get('updated_at', '')[:10] if p.get('updated_at') else 'N/A'
+                                        owner = p.get('user_id', '')
+                                        st.text(f"• {p['portfolio_name']} — by {owner} (Updated: {updated})")
+                                else:
+                                    st.info("No saved portfolios found")
+                        
+                        else:  # load-only users (e.g. Guilherme)
+                            st.markdown("##### 📂 Load Saved Portfolio")
+                            saved_portfolios = list_portfolios_from_supabase(current_user)
+                            if saved_portfolios:
+                                portfolio_options = [p['portfolio_name'] for p in saved_portfolios]
+                                selected_portfolio = st.selectbox("Select Portfolio:", portfolio_options, key="supabase_load_select")
+                                if st.button("📥 Load", key="supabase_load_btn", use_container_width=True):
+                                    loaded = load_portfolio_from_supabase(selected_portfolio, current_user)
+                                    if loaded:
+                                        st.session_state['recommended_portfolio'] = loaded
+                                        st.session_state['recommended_portfolio_saved'] = True
+                                        st.session_state['temp_portfolio'] = loaded.copy()
+                                        if 'inv_fund_tables_computed' in st.session_state:
+                                            del st.session_state['inv_fund_tables_computed']
+                                        if 'inv_fund_returns_cache' in st.session_state:
+                                            del st.session_state['inv_fund_returns_cache']
+                                        st.success(f"✅ Portfolio '{selected_portfolio}' loaded!")
+                                        st.rerun()
                                 st.markdown("##### 📋 Saved Portfolios")
                                 for p in saved_portfolios:
                                     updated = p.get('updated_at', '')[:10] if p.get('updated_at') else 'N/A'
-                                    st.text(f"• {p['portfolio_name']} (Updated: {updated})")
+                                    owner = p.get('user_id', '')
+                                    st.text(f"• {p['portfolio_name']} — by {owner} (Updated: {updated})")
                             else:
                                 st.info("No saved portfolios found")
                 
